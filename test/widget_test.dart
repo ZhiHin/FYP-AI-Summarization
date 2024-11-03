@@ -9,22 +9,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_summarization/main.dart';
+import 'package:ai_summarization/components/file_card.dart';
 
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(SummaSphereApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verify that the banner text is displayed.
+    expect(find.text("Welcome to SummaSphere!\nYour AI-powered summarization tool."), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // Check for navigation buttons.
+    expect(find.widgetWithIcon(IconButton, Icons.summarize), findsOneWidget);
+    expect(find.widgetWithIcon(IconButton, Icons.upload), findsOneWidget);
+    expect(find.widgetWithIcon(IconButton, Icons.translate), findsOneWidget);
+    expect(find.widgetWithIcon(IconButton, Icons.folder), findsOneWidget);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify that the "Recent Folders" label is displayed.
+    expect(find.text("Recent Folders"), findsOneWidget);
+
+    // Check that at least one folder card is displayed.
+    expect(find.byType(FileCard), findsWidgets);
   });
 }
