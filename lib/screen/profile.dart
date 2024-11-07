@@ -1,26 +1,72 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'privacy_policy_page.dart'; // Import the new Privacy Policy Page
+import 'EditProfilePage.dart';
+import 'privacy_policy_page.dart';
+import 'login.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Simulate user information
-    String userName = "JohnDoe"; // Replace with actual user data
-    String email = "john.doe@example.com"; // Replace with actual user data
-    // ignore: unused_local_variable
-    String phone = "+123 456 7890"; // Replace with actual user data
-    // ignore: unused_local_variable
-    String address = "123 Main St, City, Country"; // Replace with actual user data
-    // ignore: unused_local_variable
-    String encryptedPassword = "********"; // Placeholder for encrypted password
+  _ProfilePageState createState() => _ProfilePageState();
+}
 
+class _ProfilePageState extends State<ProfilePage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  User? _user;
+  Map<String, dynamic>? _userData;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  // Load user data from Firebase
+  Future<void> _loadUserData() async {
+    _user = _auth.currentUser;
+
+    if (_user != null) {
+      final userDoc = await _firestore.collection('users').doc(_user!.uid).get();
+      setState(() {
+        _userData = userDoc.data();
+      });
+    }
+  }
+
+  // Logout function
+  Future<void> _logout() async {
+    await _auth.signOut();
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginPage()));
+  }
+
+  // Delete account function
+  Future<void> _deleteAccount() async {
+    if (_user != null) {
+      try {
+        // Delete user data from Firestore
+        await _firestore.collection('users').doc(_user!.uid).delete();
+
+        // Delete the user account from FirebaseAuth
+        await _user!.delete();
+
+        // Navigate to LoginPage after account deletion
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginPage()));
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting account: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('User Profile'),
       ),
-      body: SingleChildScrollView( // Allow scrolling if content overflows
+      body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -28,45 +74,41 @@ class ProfilePage extends StatelessWidget {
             children: [
               const Center(
                 child: CircleAvatar(
-                  radius: 50, // Size of the avatar
-                  backgroundColor: Colors.grey, // Color when there is no image
-                  child: Icon(Icons.person, size: 50, color: Colors.white), // Icon to represent user
+                  radius: 50,
+                  backgroundColor: Colors.grey,
+                  child: Icon(Icons.person, size: 50, color: Colors.white),
                 ),
               ),
               const SizedBox(height: 16),
               Text(
-                userName, // Display user's full name
+                _userData?['name'] ?? 'Loading...', // Display user's full name
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
-                email, // Display user's email
+                _user?.email ?? 'Loading...', // Display user's email
                 style: const TextStyle(fontSize: 16, color: Colors.grey),
               ),
               const SizedBox(height: 20),
-              const Card(
+              Card(
                 elevation: 4,
                 child: Padding(
-                  padding: EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         "User Information",
                         style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                       ),
-                      SizedBox(height: 10),
+                      const SizedBox(height: 10),
                       ListTile(
-                        title: Text("Password:"),
-                        subtitle: Text("********"), // Display encrypted password as asterisks
+                        title: const Text("Phone:"),
+                        subtitle: Text(_userData?['phone'] ?? 'Not provided'),
                       ),
                       ListTile(
-                        title: Text("Phone:"),
-                        subtitle: Text("+123 456 7890"), // Display phone number
-                      ),
-                      ListTile(
-                        title: Text("Address:"),
-                        subtitle: Text("123 Main St, City, Country"), // Display address
+                        title: const Text("Address:"),
+                        subtitle: Text(_userData?['address'] ?? 'Not provided'),
                       ),
                     ],
                   ),
@@ -96,29 +138,35 @@ class ProfilePage extends StatelessWidget {
                           );
                         },
                       ),
-                      const ListTile(
-                        title: Text("Notifications"),
-                        onTap: null, // Implement notifications settings
+                      ListTile(
+                        title: const Text("Logout"),
+                        onTap: _logout, // Call logout function
                       ),
-                      const ListTile(
-                        title: Text("Change Password"),
-                        onTap: null, // Implement change password functionality
-                      ),
-                      const ListTile(
-                        title: Text("Logout"),
-                        onTap: null, // Implement logout functionality
+                      ListTile(
+                        title: const Text("Delete Account"),
+                        onTap: () async {
+                          bool confirm = await _confirmDeleteAccount();
+                          if (confirm) _deleteAccount();
+                        },
                       ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 20),
+              // Edit Profile button
               ElevatedButton(
                 onPressed: () {
-                  // Implement edit profile functionality
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const EditProfilePage()),
+                  ).then((_) {
+                    _loadUserData(); // Reload user data when returning from Edit Profile page
+                  });
                 },
                 style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50), // Full width button
+                  minimumSize: const Size(double.infinity, 50),
                 ),
                 child: const Text("Edit Profile"),
               ),
@@ -127,5 +175,27 @@ class ProfilePage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // Confirmation dialog for account deletion
+  Future<bool> _confirmDeleteAccount() async {
+    return await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Delete Account"),
+            content: const Text("Are you sure you want to delete your account? This action cannot be undone."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text("Cancel"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text("Delete"),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 }

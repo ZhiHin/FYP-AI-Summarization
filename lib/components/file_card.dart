@@ -45,18 +45,6 @@ class FileCard extends StatelessWidget {
             ],
           ),
           Text(pages, style: const TextStyle(color: Colors.grey)),
-          // Row(
-          //   children: [
-          //     IconButton(
-          //       icon: const Icon(Icons.edit, color: Colors.green),
-          //       onPressed: () => onEdit(),
-          //     ),
-          //     IconButton(
-          //       icon: const Icon(Icons.delete, color: Colors.red),
-          //       onPressed: () => onDelete(),
-          //     ),
-          //   ],
-          // ),
         ],
       ),
     );
