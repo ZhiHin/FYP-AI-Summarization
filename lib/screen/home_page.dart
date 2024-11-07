@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../components/folder_card.dart';
 import '../components/nav_button.dart';
 import '../components/file_card.dart';
 
@@ -10,7 +11,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final List<double> _dragOffsets = List.filled(5, 0.0); // Store drag offsets for each file card
+  final List<double> _dragOffsets =
+      List.filled(5, 0.0); // Store drag offsets for each file card
 
   void _handleEdit(int index) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -35,98 +37,189 @@ class _HomePageState extends State<HomePage> {
           style: TextStyle(color: Colors.black),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search Bar
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Row(
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.search, color: Colors.blue),
+                  // Search Bar
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.search, color: Colors.blue),
+                        SizedBox(width: 10),
+                        Text("Search files...",
+                            style: TextStyle(color: Colors.blue)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+          // Folder Cards Section
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 150, // Adjust height as needed
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: const [
+                  FolderCard(
+                    icon: Icons.folder,
+                    label: "DOCUMENTS",
+                    count: "58 Files",
+                    color: Colors.orangeAccent,
+                  ),
                   SizedBox(width: 10),
-                  Text("Search files...", style: TextStyle(color: Colors.blue)),
+                  FolderCard(
+                    icon: Icons.image,
+                    label: "IMAGES",
+                    count: "36 Files",
+                    color: Colors.greenAccent,
+                  ),
+                  SizedBox(width: 10),
+                  FolderCard(
+                    icon: Icons.picture_as_pdf,
+                    label: "PDFs",
+                    count: "120 Files",
+                    color: Colors.blueAccent,
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            // Tools Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Tools",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text("View All"),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            const SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
+          ),
+          // Tools Section
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
                 children: [
-                  NavButton(icon: Icons.picture_as_pdf, label: "PDF Tools"),
-                  NavButton(icon: Icons.text_snippet, label: "Extract Text"),
-                  NavButton(icon: Icons.summarize, label: "Document Summarize"),
-                  NavButton(icon: Icons.image, label: "Import Images"),
-                  NavButton(icon: Icons.folder, label: "Import Folders"),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Tools",
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      TextButton(
+                        onPressed: () {},
+                        child: const Text("View All"),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            // File Categories
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "All Files",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text("View All"),
-                ),
-              ],
+          ),
+          // Tools Horizontal List
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height:
+                  85, // Height that accommodates both icon and two lines of text
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: const [
+                  NavButton(
+                    icon: Icons.picture_as_pdf,
+                    label: "PDF Tools",
+                  ),
+                  NavButton(
+                    icon: Icons.text_snippet,
+                    label: "Extract Text",
+                  ),
+                  NavButton(
+                    icon: Icons.summarize,
+                    label: "Document Summarize",
+                  ),
+                  NavButton(
+                    icon: Icons.image,
+                    label: "Import Images",
+                  ),
+                  NavButton(
+                    icon: Icons.folder,
+                    label: "Import Folders",
+                  ),
+                  SizedBox(width: 8), // Right padding
+                ],
+              ),
             ),
-            const Row(
-              children: [
-                FileCategoryCard(icon: Icons.folder, label: "Document", count: "58 Files"),
-                SizedBox(width: 10),
-                FileCategoryCard(icon: Icons.image, label: "Gallery", count: "46 Files"),
-              ],
+          ),
+          // File Categories Section
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "All Files",
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      TextButton(
+                        onPressed: () {},
+                        child: const Text("View All"),
+                      ),
+                    ],
+                  ),
+                  const Row(
+                    children: [
+                      FileCategoryCard(
+                        icon: Icons.folder,
+                        label: "Document",
+                        count: "58 Files",
+                      ),
+                      SizedBox(width: 10),
+                      FileCategoryCard(
+                        icon: Icons.image,
+                        label: "Gallery",
+                        count: "46 Files",
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Recents",
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      TextButton(
+                        onPressed: () {},
+                        child: const Text("View All"),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
-            // Recent Files Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Recents",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text("View All"),
-                ),
-              ],
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: 5,
-                itemBuilder: (context, index) {
+          ),
+          // Recent Files List
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
                   return Stack(
                     children: [
-                      // Background with edit and delete buttons
                       Positioned.fill(
                         child: Container(
                           color: Colors.transparent,
@@ -138,17 +231,20 @@ class _HomePageState extends State<HomePage> {
                               GestureDetector(
                                 onTap: () => _handleEdit(index),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10),
                                   margin: const EdgeInsets.only(bottom: 10),
                                   decoration: BoxDecoration(
-                                    color: Colors.green, // Set background color to green
+                                    color: Colors.green,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: const Row(
                                     children: [
                                       Icon(Icons.edit, color: Colors.white),
                                       SizedBox(width: 15, height: 70),
-                                      Text("Edit", style: TextStyle(color: Colors.white)),
+                                      Text("Edit",
+                                          style:
+                                              TextStyle(color: Colors.white)),
                                     ],
                                   ),
                                 ),
@@ -157,17 +253,20 @@ class _HomePageState extends State<HomePage> {
                               GestureDetector(
                                 onTap: () => _handleDelete(index),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10),
                                   margin: const EdgeInsets.only(bottom: 10),
                                   decoration: BoxDecoration(
-                                    color: Colors.red, // Set background color to red
+                                    color: Colors.red,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: const Row(
                                     children: [
                                       Icon(Icons.delete, color: Colors.white),
                                       SizedBox(width: 5, height: 70),
-                                      Text("Delete", style: TextStyle(color: Colors.white)),
+                                      Text("Delete",
+                                          style:
+                                              TextStyle(color: Colors.white)),
                                     ],
                                   ),
                                 ),
@@ -176,49 +275,51 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                       ),
-                      // Foreground draggable card
                       Transform.translate(
                         offset: Offset(_dragOffsets[index], 0),
                         child: GestureDetector(
                           onHorizontalDragUpdate: (details) {
                             setState(() {
                               _dragOffsets[index] += details.delta.dx;
-                              if (_dragOffsets[index] > 0) _dragOffsets[index] = 0;
-                              if (_dragOffsets[index] < -200) _dragOffsets[index] = -200;
+                              if (_dragOffsets[index] > 0) {
+                                _dragOffsets[index] = 0;
+                              }
+                              if (_dragOffsets[index] < -200) {
+                                _dragOffsets[index] = -200;
+                              }
                             });
                           },
                           onHorizontalDragEnd: (details) {
-                            if (_dragOffsets[index] < -100) {
-                              // Stay open if dragged far enough
-                            } else {
+                            if (_dragOffsets[index] > -100) {
                               setState(() => _dragOffsets[index] = 0);
                             }
                           },
-                          child: FileCard(
-                            fileName: "Example ${index + 1}.pdf",
-                            date: "12-09-2024",
-                            time: "15:30",
-                            pages: "12 Pages",
-                            onEdit: () => _handleEdit(index),
-                            onDelete: () => _handleDelete(index),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4.0),
+                            child: FileCard(
+                              fileName: "Example ${index + 1}.pdf",
+                              date: "12-09-2024",
+                              time: "15:30",
+                              pages: "12 Pages",
+                              onEdit: () => _handleEdit(index),
+                              onDelete: () => _handleDelete(index),
+                            ),
                           ),
                         ),
                       ),
                     ],
                   );
                 },
+                childCount: 5,
               ),
             ),
-          ],
-        ),
+          ),
+          // Bottom padding
+          const SliverToBoxAdapter(
+            child: SizedBox(height: 80), // Space for FloatingActionButton
+          ),
+        ],
       ),
-      // floatingActionButton: FloatingActionButton(
-      //   onPressed: () {
-      //     // Handle action button tap
-      //   },
-      //   backgroundColor: Colors.blue,
-      //   child: const Icon(Icons.add),
-      // ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
@@ -253,7 +354,9 @@ class FileCategoryCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
                 Text(count, style: const TextStyle(color: Colors.grey)),
               ],
             ),

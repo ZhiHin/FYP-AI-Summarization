@@ -1,7 +1,26 @@
+buildscript {
+    ext.kotlin_version = '1.7.10'
+    repositories {
+        google()
+        mavenCentral()
+    }
+     dependencies { 
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath 'com.google.gms:google-services:4.3.15'
+    }
+}
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+    configurations.all {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin') {
+                details.useVersion "1.7.10"
+            }
+        }
     }
 }
 

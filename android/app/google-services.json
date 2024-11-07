@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "418894697961",
+    "project_id": "fyp-aisummarize-d6320",
+    "storage_bucket": "fyp-aisummarize-d6320.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:418894697961:android:94105957ca2530a6cbe778",
+        "android_client_info": {
+          "package_name": "com.example.ai_summarization"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuWjAVqWCe96kc5t4QqRPBhpUdfj8gH7I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
