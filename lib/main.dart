@@ -4,7 +4,7 @@ import 'screen/login.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // Initialize Firebase
+  await Firebase.initializeApp(); // Initialize Firebase once
   runApp(const SummaSphereApp());
 }
 
@@ -19,27 +19,7 @@ class SummaSphereApp extends StatelessWidget {
         primarySwatch: Colors.blue,
       ),
       debugShowCheckedModeBanner: false,
-      home: FutureBuilder(
-        future: Firebase.initializeApp(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            if (snapshot.hasError) {
-              return Scaffold(
-                body: Center(
-                  child: Text('Error: ${snapshot.error}'),
-                ),
-              );
-            }
-            return LoginPage(); // Set the LoginPage as the home page
-          }
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        },
-      ),
+      home: LoginPage(), // Directly set LoginPage as home
     );
   }
 }
-
