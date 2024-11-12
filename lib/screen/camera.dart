@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'camera_capture.dart';
 
 class CameraPage extends StatelessWidget {
   const CameraPage({super.key});
@@ -10,15 +11,24 @@ class CameraPage extends StatelessWidget {
         title: const Text('Camera'),
       ),
       body: Padding(
-        padding: const EdgeInsets.only(top: 20.0, left: 16.0, right: 16.0), // Adjust the top padding
+        padding: const EdgeInsets.only(
+            top: 20.0, left: 16.0, right: 16.0), // Adjust the top padding
         child: Center(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.start, // Align items at the start
+            mainAxisAlignment:
+                MainAxisAlignment.start, // Align items at the start
             children: [
               const SizedBox(height: 30), // Add space before the buttons
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   // Implement camera functionality
+                  final imagePath = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => CameraCapture()),
+                  );
+                  if (imagePath != null) {
+                    // Handle the captured image
+                  }
                 },
                 child: const Text("Open Camera"),
               ),

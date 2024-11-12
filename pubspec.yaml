@@ -45,6 +45,8 @@ dependencies:
   pdf_image_renderer: ^0.7.0
   pdf: ^3.11.1
   pdf_render: ^1.4.12
+  camera: ^0.9.4+5
+  path_provider: ^2.0.11
   
 
 dev_dependencies:
