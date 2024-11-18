@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'document_summarize.dart';
+import 'speech_recognition.dart';
+
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
 
@@ -33,9 +36,25 @@ class ToolsPage extends StatelessWidget {
               },
             ),
             ListTile(
-              title: const Text("Text Summarizer"),
+              title: const Text("Document Summarizer"),
               onTap: () {
-                // Implement functionality
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DocumentSummarizePage(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              title: const Text("Speech Recognition"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SpeechRecognitionScreen(),
+                  ),
+                );
               },
             ),
           ],
