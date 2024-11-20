@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'document_summarize.dart';
 import 'speech_recognition.dart';
+import 'translate.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
@@ -53,6 +54,17 @@ class ToolsPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => const SpeechRecognitionScreen(),
+                  ),
+                );
+              },
+            ),
+             ListTile(
+              title: const Text("Translation"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const TranslateScreen(),
                   ),
                 );
               },
