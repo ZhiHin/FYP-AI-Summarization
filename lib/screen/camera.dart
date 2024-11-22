@@ -1,11 +1,10 @@
-import 'package:ai_summarization/screen/gallery.dart';
+import 'package:ai_summarization/screen/upload_gallery.dart';
 import 'package:ai_summarization/screen/image_preview.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
 class Camera extends StatefulWidget {
@@ -140,7 +139,7 @@ class _CameraState extends State<Camera> {
                     // Navigate to the gallery page
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => Gallery()),
+                      MaterialPageRoute(builder: (context) => UploadGallery()),
                     );
                   },
                 ),

@@ -53,7 +53,8 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
 
       final file = File(result.files.single.path!);
       final fileSize = await file.length();
-      if (fileSize > 10 * 1024 * 1024) { // 10MB limit
+      if (fileSize > 10 * 1024 * 1024) {
+        // 10MB limit
         _showSnackBar('File size must be less than 10MB');
         return;
       }
@@ -149,9 +150,9 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
                         final document = documents[index];
                         final data = document.data() as Map<String, dynamic>;
                         final fileName = data['title'] as String;
-                        final uploadDate = (data['uploadedAt'] as Timestamp?)
-                                ?.toDate() ??
-                            DateTime.now();
+                        final uploadDate =
+                            (data['uploadedAt'] as Timestamp?)?.toDate() ??
+                                DateTime.now();
                         final fileSize = (data['size'] as num).toDouble();
                         final fileUrl = data['fileUrl'] as String;
                         final documentId = document.id;
@@ -195,7 +196,8 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => ExtractScreen(fileUrl: _selectedFileUrl!),
+                          builder: (context) =>
+                              ExtractScreen(fileUrl: _selectedFileUrl!),
                         ),
                       );
                     },
@@ -217,7 +219,8 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
     );
   }
 
-  Future<void> _deleteDocument(String documentId, String fileUrl, String fileName) async {
+  Future<void> _deleteDocument(
+      String documentId, String fileUrl, String fileName) async {
     final user = _auth.currentUser;
     if (user == null) {
       _showSnackBar('Please log in to delete the document');

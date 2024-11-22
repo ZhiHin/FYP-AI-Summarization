@@ -1,3 +1,4 @@
+import 'package:ai_summarization/screen/gallery.dart';
 import 'package:flutter/material.dart';
 
 import 'document_summarize.dart';
@@ -16,7 +17,8 @@ class ToolsPage extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start, // Align items to the start
+          crossAxisAlignment:
+              CrossAxisAlignment.start, // Align items to the start
           children: [
             const SizedBox(height: 20), // Add space at the top
             const Text(
@@ -58,13 +60,24 @@ class ToolsPage extends StatelessWidget {
                 );
               },
             ),
-             ListTile(
+            ListTile(
               title: const Text("Translation"),
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const TranslateScreen(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              title: const Text("Text Detection"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => Gallery(),
                   ),
                 );
               },
