@@ -97,6 +97,39 @@ class _DocumentsPageState extends State<DocumentsPage> {
     }
   }
 
+
+  Future<void> _pickAndUploadFile() async {
+    final result = await FilePicker.platform.pickFiles();
+    if (result != null && result.files.isNotEmpty) {
+      final originalFileName = result.files.single.name;
+      final filePath = result.files.single.path!;
+
+      final user = _auth.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please log in to upload a document')),
+        );
+        return;
+      }
+
+      final userId = user.uid;
+      final file = File(filePath);
+      final fileSize = await file.length();
+      final uploadDate = DateTime.now();
+
+      final storageRef =
+          FirebaseStorage.instance.ref().child('users/$userId/documents/');
+
+      // Generate a unique filename if a document with the same name exists
+      String fileName = originalFileName;
+      int count = 1;
+
+      // Check if the file already exists by attempting to get its URL
+      while (await _fileExists(storageRef, fileName)) {
+        fileName =
+            '${originalFileName.substring(0, originalFileName.lastIndexOf('.'))}($count)${originalFileName.substring(originalFileName.lastIndexOf('.'))}';
+        count++;
+
   // Folder path management
   Future<void> _updateFolderPath() async {
     if (_selectedFolderId == null) {
@@ -355,6 +388,54 @@ class _DocumentsPageState extends State<DocumentsPage> {
     );
   }
 
+      try {
+        // Use uploadTask to upload the file
+        TaskSnapshot uploadTask =
+            await storageRef.child(fileName).putFile(file);
+        final fileUrl =
+            await uploadTask.ref.getDownloadURL(); // Get the URL after upload
+
+        int? pageCount;
+        if (originalFileName.endsWith('.pdf')) {
+          pageCount = await _getPdfPageCount(filePath);
+        }
+
+        final document = {
+          'title': fileName,
+          'description': '',
+          'size': fileSize,
+          'uploadedAt': uploadDate,
+          'pageCount': pageCount ?? 0,
+          'fileUrl': fileUrl,
+        };
+
+        await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('documents')
+            .add(document);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File uploaded successfully')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error uploading file: $e')),
+        );
+      }
+    }
+  }
+
+// Helper method to check if file exists
+  Future<bool> _fileExists(Reference storageRef, String fileName) async {
+    try {
+      await storageRef.child(fileName).getDownloadURL();
+      return true; // File exists
+    } catch (e) {
+      return false; // File does not exist
+    }
+  }
+
   Future<void> _updateDocumentFolder(
       String documentId, String? folderId) async {
     final user = _auth.currentUser;
@@ -506,7 +587,9 @@ class _DocumentsPageState extends State<DocumentsPage> {
     }
   }
 
+
   // Document deletion method
+
   Future<void> _deleteDocument(
       String documentId, String fileUrl, String fileName) async {
     try {
@@ -678,6 +761,40 @@ class _DocumentsPageState extends State<DocumentsPage> {
           ),
         ],
       ),
+
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _documentStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Text('Something went wrong'));
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final documents = snapshot.data?.docs ?? [];
+          return ListView.builder(
+            itemCount: documents.length,
+            itemBuilder: (context, index) {
+              final document = documents[index];
+              final data = document.data() as Map<String, dynamic>;
+              final fileName = data['title'];
+              final uploadDate = (data['uploadedAt'] as Timestamp).toDate();
+              final fileSize = data['size'];
+              final pageCount =
+                  data.containsKey('pageCount') ? data['pageCount'] : 0;
+              final fileUrl = data['fileUrl'];
+              final documentId = document.id;
+
+              return ListTile(
+                title: Text(fileName),
+                subtitle: Text(
+                  'Uploaded on: $uploadDate\nSize: ${fileSize / 1024} KB\nPages: $pageCount',
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+
       body: Column(
         children: [
           // Folder path breadcrumb

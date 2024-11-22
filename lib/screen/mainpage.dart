@@ -18,10 +18,10 @@ class _MainPageState extends State<MainPage> {
   final List<Widget> _pages = [
     const HomePage(), // Home Page
     const DocumentsPage(), // Document Page
-    const CameraPage(), // Camera Page
+    Camera(), // Camera Page
     const ToolsPage(), // Tools Page
     const ProfilePage(), // Profile Page
-  ]; 
+  ];
 
   void _onItemTapped(int index) {
     setState(() {
@@ -33,7 +33,8 @@ class _MainPageState extends State<MainPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_currentIndex], // Display the current page
-      bottomNavigationBar: BottomNavBar( // Use the BottomNavBar widget
+      bottomNavigationBar: BottomNavBar(
+        // Use the BottomNavBar widget
         currentIndex: _currentIndex, // Pass current index to the BottomNavBar
         onTap: _onItemTapped, // Handle taps
       ),
