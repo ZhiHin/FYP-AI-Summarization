@@ -97,39 +97,6 @@ class _DocumentsPageState extends State<DocumentsPage> {
     }
   }
 
-
-  Future<void> _pickAndUploadFile() async {
-    final result = await FilePicker.platform.pickFiles();
-    if (result != null && result.files.isNotEmpty) {
-      final originalFileName = result.files.single.name;
-      final filePath = result.files.single.path!;
-
-      final user = _auth.currentUser;
-      if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please log in to upload a document')),
-        );
-        return;
-      }
-
-      final userId = user.uid;
-      final file = File(filePath);
-      final fileSize = await file.length();
-      final uploadDate = DateTime.now();
-
-      final storageRef =
-          FirebaseStorage.instance.ref().child('users/$userId/documents/');
-
-      // Generate a unique filename if a document with the same name exists
-      String fileName = originalFileName;
-      int count = 1;
-
-      // Check if the file already exists by attempting to get its URL
-      while (await _fileExists(storageRef, fileName)) {
-        fileName =
-            '${originalFileName.substring(0, originalFileName.lastIndexOf('.'))}($count)${originalFileName.substring(originalFileName.lastIndexOf('.'))}';
-        count++;
-
   // Folder path management
   Future<void> _updateFolderPath() async {
     if (_selectedFolderId == null) {
@@ -254,95 +221,96 @@ class _DocumentsPageState extends State<DocumentsPage> {
   }
 
   // Add rename function in _DocumentsPageState class
-  Future<void> _renameDocument(String docId, String currentName, String fileUrl) async {
-  final extension = path.extension(currentName);
-  final baseName = path.basenameWithoutExtension(currentName);
-  String newName = baseName;
+  Future<void> _renameDocument(
+      String docId, String currentName, String fileUrl) async {
+    final extension = path.extension(currentName);
+    final baseName = path.basenameWithoutExtension(currentName);
+    String newName = baseName;
 
-  final result = await showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Rename Document'),
-      content: TextField(
-        autofocus: true,
-        controller: TextEditingController(text: baseName),
-        onChanged: (value) => newName = value,
-        decoration: InputDecoration(
-          labelText: 'New name',
-          suffixText: extension,
-          suffixStyle: const TextStyle(
-            color: Colors.grey,
-            fontWeight: FontWeight.bold,
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Document'),
+        content: TextField(
+          autofocus: true,
+          controller: TextEditingController(text: baseName),
+          onChanged: (value) => newName = value,
+          decoration: InputDecoration(
+            labelText: 'New name',
+            suffixText: extension,
+            suffixStyle: const TextStyle(
+              color: Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, '$newName$extension'),
+            child: const Text('Rename'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(context, '$newName$extension'),
-          child: const Text('Rename'),
-        ),
-      ],
-    ),
-  );
+    );
 
-  if (result != null && result.isNotEmpty && result != currentName) {
-    try {
-      final storage = FirebaseStorage.instance;
-      final oldRef = storage.refFromURL(fileUrl);
-      
-      // Get original document data
-      final docSnapshot = await _firestore
-          .collection('users')
-          .doc(_auth.currentUser?.uid)
-          .collection('documents')
-          .doc(docId)
-          .get();
-      
-      final originalData = docSnapshot.data() ?? {};
-      
-      // Create new reference with new name
-      final newRef = storage.ref().child(
-        oldRef.fullPath.replaceAll(currentName, result)
-      );
+    if (result != null && result.isNotEmpty && result != currentName) {
+      try {
+        final storage = FirebaseStorage.instance;
+        final oldRef = storage.refFromURL(fileUrl);
 
-      // Copy file to new location
-      final bytes = await oldRef.getData();
-      if (bytes != null) {
-        await newRef.putData(bytes);
-        final newUrl = await newRef.getDownloadURL();
-
-        // Update Firestore with all fields
-        await _firestore
+        // Get original document data
+        final docSnapshot = await _firestore
             .collection('users')
             .doc(_auth.currentUser?.uid)
             .collection('documents')
             .doc(docId)
-            .update({
-              ...originalData,
-              'title': result,
-              'fileUrl': newUrl,
-              'storagePath': newRef.fullPath,
-              'updatedAt': DateTime.now(),
-            });
+            .get();
 
-        // Delete old file
-        await oldRef.delete();
-        
+        final originalData = docSnapshot.data() ?? {};
+
+        // Create new reference with new name
+        final newRef = storage
+            .ref()
+            .child(oldRef.fullPath.replaceAll(currentName, result));
+
+        // Copy file to new location
+        final bytes = await oldRef.getData();
+        if (bytes != null) {
+          await newRef.putData(bytes);
+          final newUrl = await newRef.getDownloadURL();
+
+          // Update Firestore with all fields
+          await _firestore
+              .collection('users')
+              .doc(_auth.currentUser?.uid)
+              .collection('documents')
+              .doc(docId)
+              .update({
+            ...originalData,
+            'title': result,
+            'fileUrl': newUrl,
+            'storagePath': newRef.fullPath,
+            'updatedAt': DateTime.now(),
+          });
+
+          // Delete old file
+          await oldRef.delete();
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Document renamed successfully')),
+          );
+        }
+      } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Document renamed successfully')),
+          SnackBar(content: Text('Error renaming document: $e')),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error renaming document: $e')),
-      );
     }
   }
-}
 
   // Method to move document to folder
   Future<void> _moveDocumentToFolder(
@@ -386,54 +354,6 @@ class _DocumentsPageState extends State<DocumentsPage> {
         ),
       ),
     );
-  }
-
-      try {
-        // Use uploadTask to upload the file
-        TaskSnapshot uploadTask =
-            await storageRef.child(fileName).putFile(file);
-        final fileUrl =
-            await uploadTask.ref.getDownloadURL(); // Get the URL after upload
-
-        int? pageCount;
-        if (originalFileName.endsWith('.pdf')) {
-          pageCount = await _getPdfPageCount(filePath);
-        }
-
-        final document = {
-          'title': fileName,
-          'description': '',
-          'size': fileSize,
-          'uploadedAt': uploadDate,
-          'pageCount': pageCount ?? 0,
-          'fileUrl': fileUrl,
-        };
-
-        await _firestore
-            .collection('users')
-            .doc(userId)
-            .collection('documents')
-            .add(document);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File uploaded successfully')),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error uploading file: $e')),
-        );
-      }
-    }
-  }
-
-// Helper method to check if file exists
-  Future<bool> _fileExists(Reference storageRef, String fileName) async {
-    try {
-      await storageRef.child(fileName).getDownloadURL();
-      return true; // File exists
-    } catch (e) {
-      return false; // File does not exist
-    }
   }
 
   Future<void> _updateDocumentFolder(
@@ -587,9 +507,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
     }
   }
 
-
   // Document deletion method
-
   Future<void> _deleteDocument(
       String documentId, String fileUrl, String fileName) async {
     try {
@@ -761,40 +679,6 @@ class _DocumentsPageState extends State<DocumentsPage> {
           ),
         ],
       ),
-
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _documentStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Center(child: Text('Something went wrong'));
-          }
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final documents = snapshot.data?.docs ?? [];
-          return ListView.builder(
-            itemCount: documents.length,
-            itemBuilder: (context, index) {
-              final document = documents[index];
-              final data = document.data() as Map<String, dynamic>;
-              final fileName = data['title'];
-              final uploadDate = (data['uploadedAt'] as Timestamp).toDate();
-              final fileSize = data['size'];
-              final pageCount =
-                  data.containsKey('pageCount') ? data['pageCount'] : 0;
-              final fileUrl = data['fileUrl'];
-              final documentId = document.id;
-
-              return ListTile(
-                title: Text(fileName),
-                subtitle: Text(
-                  'Uploaded on: $uploadDate\nSize: ${fileSize / 1024} KB\nPages: $pageCount',
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-
       body: Column(
         children: [
           // Folder path breadcrumb
@@ -971,7 +855,8 @@ class _DocumentsPageState extends State<DocumentsPage> {
                           onSelected: (value) {
                             switch (value) {
                               case 'rename':
-                                _renameDocument(doc.id, fileName, data['fileUrl']);
+                                _renameDocument(
+                                    doc.id, fileName, data['fileUrl']);
                                 break;
                               case 'move':
                                 _moveDocumentToFolder(doc.id, data['folderId']);
