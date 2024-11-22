@@ -14,25 +14,29 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
 
   void _login() async {
-  try {
-    await FirebaseAuth.instance.signInWithEmailAndPassword(
-      email: _emailController.text,
-      password: _passwordController.text,
-    );
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
 
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Login successful!')));
+      // Show success message
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Login successful!')));
 
-    // Navigate to MainPage after login
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const MainPage()),  // Make sure MainPage is defined
-    );
-  } catch (e) {
-    // Show error message if login fails
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to log in: $e')));
+      // Navigate to MainPage after login
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+            builder: (context) =>
+                const MainPage()), // Make sure MainPage is defined
+      );
+    } catch (e) {
+      // Show error message if login fails
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to log in: $e')));
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {

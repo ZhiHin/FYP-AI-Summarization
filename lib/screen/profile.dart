@@ -29,7 +29,8 @@ class _ProfilePageState extends State<ProfilePage> {
     _user = _auth.currentUser;
 
     if (_user != null) {
-      final userDoc = await _firestore.collection('users').doc(_user!.uid).get();
+      final userDoc =
+          await _firestore.collection('users').doc(_user!.uid).get();
       setState(() {
         _userData = userDoc.data();
       });
@@ -39,7 +40,8 @@ class _ProfilePageState extends State<ProfilePage> {
   // Logout function
   Future<void> _logout() async {
     await _auth.signOut();
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginPage()));
+    Navigator.pushReplacement(
+        context, MaterialPageRoute(builder: (context) => LoginPage()));
   }
 
   // Delete account function
@@ -53,9 +55,11 @@ class _ProfilePageState extends State<ProfilePage> {
         await _user!.delete();
 
         // Navigate to LoginPage after account deletion
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => LoginPage()));
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (context) => LoginPage()));
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting account: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting account: $e')));
       }
     }
   }
@@ -82,7 +86,8 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 16),
               Text(
                 _userData?['name'] ?? 'Loading...', // Display user's full name
-                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
@@ -99,7 +104,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     children: [
                       const Text(
                         "User Information",
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 10),
                       ListTile(
@@ -124,7 +130,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     children: [
                       const Text(
                         "Settings",
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 10),
                       ListTile(
@@ -183,7 +190,8 @@ class _ProfilePageState extends State<ProfilePage> {
           context: context,
           builder: (context) => AlertDialog(
             title: const Text("Delete Account"),
-            content: const Text("Are you sure you want to delete your account? This action cannot be undone."),
+            content: const Text(
+                "Are you sure you want to delete your account? This action cannot be undone."),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
