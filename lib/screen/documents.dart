@@ -221,11 +221,11 @@ class _DocumentsPageState extends State<DocumentsPage> {
   }
 
   // Add rename function in _DocumentsPageState class
-  Future<void> _renameDocument(String docId, String currentName) async {
+  Future<void> _renameDocument(String docId, String currentName, String fileUrl) async {
   final extension = path.extension(currentName);
   final baseName = path.basenameWithoutExtension(currentName);
   String newName = baseName;
-  
+
   final result = await showDialog<String>(
     context: context,
     builder: (context) => AlertDialog(
@@ -258,16 +258,51 @@ class _DocumentsPageState extends State<DocumentsPage> {
 
   if (result != null && result.isNotEmpty && result != currentName) {
     try {
-      await _firestore
+      final storage = FirebaseStorage.instance;
+      final oldRef = storage.refFromURL(fileUrl);
+      
+      // Get original document data
+      final docSnapshot = await _firestore
           .collection('users')
           .doc(_auth.currentUser?.uid)
           .collection('documents')
           .doc(docId)
-          .update({'title': result});
+          .get();
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document renamed successfully')),
+      final originalData = docSnapshot.data() ?? {};
+      
+      // Create new reference with new name
+      final newRef = storage.ref().child(
+        oldRef.fullPath.replaceAll(currentName, result)
       );
+
+      // Copy file to new location
+      final bytes = await oldRef.getData();
+      if (bytes != null) {
+        await newRef.putData(bytes);
+        final newUrl = await newRef.getDownloadURL();
+
+        // Update Firestore with all fields
+        await _firestore
+            .collection('users')
+            .doc(_auth.currentUser?.uid)
+            .collection('documents')
+            .doc(docId)
+            .update({
+              ...originalData,
+              'title': result,
+              'fileUrl': newUrl,
+              'storagePath': newRef.fullPath,
+              'updatedAt': DateTime.now(),
+            });
+
+        // Delete old file
+        await oldRef.delete();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Document renamed successfully')),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error renaming document: $e')),
@@ -819,7 +854,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                           onSelected: (value) {
                             switch (value) {
                               case 'rename':
-                                _renameDocument(doc.id, fileName);
+                                _renameDocument(doc.id, fileName, data['fileUrl']);
                                 break;
                               case 'move':
                                 _moveDocumentToFolder(doc.id, data['folderId']);
