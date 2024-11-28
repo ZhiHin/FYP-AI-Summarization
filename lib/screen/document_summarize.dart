@@ -102,15 +102,6 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Document Summarize'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.exit_to_app),
-            onPressed: () async {
-              await _auth.signOut();
-              _showSnackBar('Logged out successfully');
-            },
-          ),
-        ],
       ),
       body: Stack(
         children: [

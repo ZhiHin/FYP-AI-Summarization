@@ -9,7 +9,7 @@ class DetectText extends StatelessWidget {
 
   Future<String> _generateTextFromImage(String imageUrl) async {
     final response = await http.post(
-      Uri.parse('http://10.0.2.2:8000/ocr'),
+      Uri.parse('http://192.168.1.106:8000/ocr'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'image_url': imageUrl}),
     );

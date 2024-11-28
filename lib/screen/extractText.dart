@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 class ExtractScreen extends StatefulWidget {
-  final String fileUrl; // Pass file URL to this screen
+  final String fileUrl;
 
   const ExtractScreen({super.key, required this.fileUrl});
 
@@ -16,12 +17,25 @@ class _ExtractScreenState extends State<ExtractScreen> {
   String? _extractedText;
   String? _summary;
   bool _isLoading = false;
-  String _selectedSummarizationTechnique = 'extractive'; // Default is extractive
+  String _selectedSummarizationTechnique = 'extractive';
 
   @override
   void initState() {
     super.initState();
     _extractText(widget.fileUrl);
+  }
+
+  // Copy text to clipboard and show a snackbar
+  Future<void> _copyToClipboard(String text, String label) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$label copied to clipboard'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   // Extract text from the document
@@ -38,9 +52,9 @@ class _ExtractScreenState extends State<ExtractScreen> {
       });
 
       final fileResponse = await http.get(Uri.parse(fileUrl)).timeout(
-        const Duration(minutes: 2),
-        onTimeout: () => throw TimeoutException('File download timeout'),
-      );
+            const Duration(minutes: 2),
+            onTimeout: () => throw TimeoutException('File download timeout'),
+          );
 
       if (fileResponse.statusCode != 200) {
         throw Exception('Failed to download file: ${fileResponse.statusCode}');
@@ -62,9 +76,9 @@ class _ExtractScreenState extends State<ExtractScreen> {
       );
 
       final extractResponse = await extractRequest.send().timeout(
-        const Duration(minutes: 5),
-        onTimeout: () => throw TimeoutException('Text extraction timeout'),
-      );
+            const Duration(minutes: 5),
+            onTimeout: () => throw TimeoutException('Text extraction timeout'),
+          );
 
       final extractedData = json.decode(
         await extractResponse.stream.bytesToString(),
@@ -77,7 +91,6 @@ class _ExtractScreenState extends State<ExtractScreen> {
       }
 
       setState(() => _extractedText = extractedData['text']);
-
     } on TimeoutException catch (e) {
       setState(() => _extractedText = 'Error: Operation timed out - $e');
     } on http.ClientException catch (e) {
@@ -96,21 +109,25 @@ class _ExtractScreenState extends State<ExtractScreen> {
       return;
     }
 
+     print("Selected Summarization Technique: $_selectedSummarizationTechnique"); 
+
     try {
       setState(() => _summary = 'Generating summary...');
 
-      final summarizeResponse = await http.post(
-        Uri.parse('http://192.168.1.106:8000/summarize'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'text': _extractedText,
-          'summarization_type': _selectedSummarizationTechnique, // Pass selected technique
-          'max_length': 150,
-        }),
-      ).timeout(
-        const Duration(minutes: 5),
-        onTimeout: () => throw TimeoutException('Summarization timeout'),
-      );
+      final summarizeResponse = await http
+          .post(
+            Uri.parse('http://192.168.1.106:8000/summarize'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'text': _extractedText,
+              'summary_type': _selectedSummarizationTechnique,
+              'max_length': 150,
+            }),
+          )
+          .timeout(
+            const Duration(minutes: 5),
+            onTimeout: () => throw TimeoutException('Summarization timeout'),
+          );
 
       if (summarizeResponse.statusCode != 200) {
         final error = json.decode(summarizeResponse.body)['error'];
@@ -119,7 +136,6 @@ class _ExtractScreenState extends State<ExtractScreen> {
 
       final summaryData = json.decode(summarizeResponse.body);
       setState(() => _summary = summaryData['summary']);
-
     } on TimeoutException catch (e) {
       setState(() => _summary = 'Error: Operation timed out - $e');
     } on http.ClientException catch (e) {
@@ -147,9 +163,23 @@ class _ExtractScreenState extends State<ExtractScreen> {
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      Text(
-                        'Extracted Text:',
-                        style: Theme.of(context).textTheme.headlineSmall,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Extracted Text:',
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                          if (_extractedText != null &&
+                              !_extractedText!.startsWith('Error') &&
+                              !_extractedText!.startsWith('Downloading'))
+                            IconButton(
+                              icon: const Icon(Icons.copy),
+                              onPressed: () => _copyToClipboard(
+                                  _extractedText!, 'Extracted text'),
+                              tooltip: 'Copy extracted text',
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 10),
                       Text(
@@ -157,16 +187,16 @@ class _ExtractScreenState extends State<ExtractScreen> {
                         style: const TextStyle(fontSize: 14),
                       ),
                       const SizedBox(height: 20),
-                      
-                      // Selection for Summarization Technique
                       Row(
                         children: [
                           Radio<String>(
                             value: 'extractive',
                             groupValue: _selectedSummarizationTechnique,
-                            onChanged: (String? value) {
+                            onChanged: (value) {
                               setState(() {
                                 _selectedSummarizationTechnique = value!;
+                                print(
+                                    "Selected summarization technique: $_selectedSummarizationTechnique");
                               });
                             },
                           ),
@@ -174,16 +204,17 @@ class _ExtractScreenState extends State<ExtractScreen> {
                           Radio<String>(
                             value: 'abstractive',
                             groupValue: _selectedSummarizationTechnique,
-                            onChanged: (String? value) {
+                            onChanged: (value) {
                               setState(() {
                                 _selectedSummarizationTechnique = value!;
+                                print(
+                                    "Selected summarization technique: $_selectedSummarizationTechnique");
                               });
                             },
                           ),
                           const Text('Abstractive'),
                         ],
                       ),
-                      
                       ElevatedButton(
                         onPressed: _summarizeText,
                         child: const Text('Summarize Text'),
@@ -191,9 +222,32 @@ class _ExtractScreenState extends State<ExtractScreen> {
                       if (_summary != null && _summary!.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Text(
-                            _summary!,
-                            style: const TextStyle(fontSize: 16),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Summary:',
+                                    style:
+                                        Theme.of(context).textTheme.titleLarge,
+                                  ),
+                                  if (!_summary!.startsWith('Error') &&
+                                      !_summary!.startsWith('Generating'))
+                                    IconButton(
+                                      icon: const Icon(Icons.copy),
+                                      onPressed: () => _copyToClipboard(
+                                          _summary!, 'Summary'),
+                                      tooltip: 'Copy summary',
+                                    ),
+                                ],
+                              ),
+                              Text(
+                                _summary!,
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ],
                           ),
                         ),
                     ],
