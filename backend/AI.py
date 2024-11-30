@@ -48,7 +48,16 @@ except Exception as e:
     summarizer = None
 
 # Initialize the extractive summarization pipeline (BART)
-extractive_summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+try:
+    extractive_summarizer = pipeline(
+        "summarization", 
+        model="facebook/bart-large-cnn",
+        device=-1  # Use CPU by default for compatibility
+    )
+    logger.info("Extractive Summarization model (bart) loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading BART model: {e}")
+    summarizer = None
 
 class OCRRequest(BaseModel):
     image_url: str
@@ -76,21 +85,21 @@ def calculate_dynamic_max_length(text_length: int, min_length: int = 50, max_len
 
 # Chunking function for large text
 def chunk_text(text: str, chunk_size: int = 1000) -> list:
-    """Split text into chunks of approximately chunk_size words."""
     words = text.split()
     chunks = []
     current_chunk = []
     current_length = 0
 
     for word in words:
-        current_length += 1
         current_chunk.append(word)
-        
-        if current_length >= chunk_size:
-            chunks.append(' '.join(current_chunk))
-            current_chunk = []
-            current_length = 0
-    
+        # Check token length using tokenizer
+        tokenized_chunk = tokenizer.encode(' '.join(current_chunk), truncation=True)
+        if len(tokenized_chunk) > chunk_size:
+            chunks.append(' '.join(current_chunk[:-1]))  # Add the previous chunk if the current one exceeds limit
+            current_chunk = [word]  # Start new chunk
+        else:
+            current_length += 1
+     
     if current_chunk:
         chunks.append(' '.join(current_chunk))
     
@@ -134,21 +143,47 @@ def summarize_large_text(text: str, max_length: int = 150) -> str:
         return None
 
 # Function for extractive summarization using BART with chunking
-def extractive_summarization(text: str, max_chunk_length: int = 1024) -> str:
-    """Extractive summarization for text using BART model with chunking."""
+def extractive_summarization(
+    text: str, max_summary_length: int = 150, min_summary_length: int = 50
+) -> str:
     try:
-        chunks = chunk_text(text, chunk_size=max_chunk_length)
+        if not text or not text.strip():
+            return "No valid text provided for summarization."
+
+        if not extractive_summarizer:
+            return "Summarization model is not loaded. Please check the model configuration."
+
+        # Split the text into chunks
+        chunks = chunk_text(text)
+        logging.info(f"Split text into {len(chunks)} chunks.")
+
         summaries = []
-
         for chunk in chunks:
-            summary = extractive_summarizer(chunk, max_length=150, min_length=50, do_sample=False)
-            summaries.append(summary[0]['summary_text'])
+            if not chunk.strip():
+                logging.warning("Skipping empty chunk.")
+                continue  # Skip empty chunks
 
-        return " ".join(summaries)
+            try:
+                # Perform summarization on each chunk
+                summary = extractive_summarizer(
+                    chunk,
+                    max_length=max_summary_length,
+                    min_length=min_summary_length,
+                    truncation=True
+                )[0]['summary_text']
+                summaries.append(summary)
+            except Exception as chunk_error:
+                logging.warning(f"Error summarizing chunk: {chunk_error}")
+
+        if not summaries:
+            return "Unable to generate a summary from the input text."
+
+        # Combine all summaries into a cohesive output
+        return "\n".join(summaries).strip()
 
     except Exception as e:
-        logger.error(f"Error in extractive summarization: {e}")
-        return None
+        logging.error(f"Unexpected error during summarization: {e}")
+        return "An unexpected error occurred during summarization."
 
 # Structure the summary
 def structure_summary(summary: str) -> str:
