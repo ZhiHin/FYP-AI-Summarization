@@ -1,6 +1,6 @@
+import 'package:ai_summarization/screen/camera_view.dart';
 import 'package:flutter/material.dart';
 import '../components/bottom_nav_bar.dart';
-import 'camera.dart';
 import 'documents.dart';
 import 'home_page.dart';
 import 'profile.dart';
@@ -18,7 +18,7 @@ class _MainPageState extends State<MainPage> {
   final List<Widget> _pages = [
     const HomePage(), // Home Page
     const DocumentsPage(), // Document Page
-    Camera(), // Camera Page
+    const CameraView(), // Camera Page
     const ToolsPage(), // Tools Page
     const ProfilePage(), // Profile Page
   ];

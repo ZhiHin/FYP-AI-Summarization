@@ -152,18 +152,18 @@ class _CameraState extends State<Camera> {
               onTap: () async {
                 final image = await _captureImage();
                 if (image != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ImagePreview(
-                        file: image,
-                        onConfirm: () async {
-                          // Upload to Firebase and save to Firestore
-                          await _uploadImageToFirebase(image);
-                        },
-                      ),
-                    ),
-                  );
+                  // Navigator.push(
+                  //   context,
+                  //   MaterialPageRoute(
+                  //     builder: (context) => ImagePreview(
+                  //       file: image,
+                  //       onConfirm: () async {
+                  //         // Upload to Firebase and save to Firestore
+                  //         await _uploadImageToFirebase(image);
+                  //       },
+                  //     ),
+                  //   ),
+                  // );
                 } else {
                   print('Error capturing image');
                 }
