@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 
 class ImagePreview extends StatelessWidget {
-  final XFile file;
-  final Function onConfirm;
+  final XFile image;
+  final List<XFile> images;
+  final Function onAddMoreImages;
 
-  const ImagePreview({required this.file, required this.onConfirm, Key? key})
-      : super(key: key);
+  ImagePreview({
+    required this.image,
+    required this.images,
+    required this.onAddMoreImages,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +22,7 @@ class ImagePreview extends StatelessWidget {
       body: Column(
         children: [
           Expanded(
-            child: Image.file(File(file.path)),
+            child: Image.file(File(image.path)),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -30,11 +34,8 @@ class ImagePreview extends StatelessWidget {
                 child: const Text('Retake'),
               ),
               ElevatedButton(
-                onPressed: () async {
-                  await onConfirm();
-                  Navigator.pop(context);
-                },
-                child: const Text('Confirm'),
+                onPressed: () => {onAddMoreImages(), Navigator.pop(context)},
+                child: const Text('Add Image'),
               ),
             ],
           ),

@@ -1,4 +1,5 @@
 import 'package:ai_summarization/screen/gallery.dart';
+import 'package:ai_summarization/screen/gallery_tool_view.dart';
 import 'package:flutter/material.dart';
 
 import 'document_summarize.dart';
@@ -77,7 +78,7 @@ class ToolsPage extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => Gallery(),
+                    builder: (context) => GalleryView(),
                   ),
                 );
               },

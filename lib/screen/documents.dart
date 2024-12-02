@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:ai_summarization/controller/document_control.dart';
+import 'package:ai_summarization/model/document_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,7 +13,7 @@ import 'package:intl/intl.dart';
 import 'package:rxdart/rxdart.dart';
 
 // Enum for document types
-enum DocumentType { pdf, document, spreadsheet, presentation, other }
+enum DocumentType { image, pdf, document, spreadsheet, presentation, other }
 
 // Utility function to determine document type
 DocumentType getDocumentType(String fileName) {
@@ -43,6 +45,8 @@ class DocumentsPage extends StatefulWidget {
 class _DocumentsPageState extends State<DocumentsPage> {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+  final _model = DocumentModel();
+  final _controller = DocumentControl();
   String? _selectedFolderId;
   String? _selectedDocumentType;
   List<String> _folderPath = [];
@@ -52,8 +56,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
     final user = _auth.currentUser;
     if (user != null) {
       // Create folder query for current level only
-      Query<Map<String, dynamic>> folderQuery =
-          _firestore.collection('users').doc(user.uid).collection('folders');
+      Query<Map<String, dynamic>> folderQuery = _model.createFolderDoc();
 
       // Only show folders that belong to the current level
       // If _selectedFolderId is null, show only root folders (where parentFolderId is null)
@@ -66,8 +69,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
       }
 
       // Create document query
-      Query<Map<String, dynamic>> documentQuery =
-          _firestore.collection('users').doc(user.uid).collection('documents');
+      Query<Map<String, dynamic>> documentQuery = _model.createDocumentDoc();
       //.where('folderId', isNull: true);  // Only show documents without a folder
       //.where('folderId', isEqualTo: _selectedFolderId);
 
@@ -111,12 +113,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
     String? currentFolderId = _selectedFolderId;
 
     while (currentFolderId != null) {
-      final folderDoc = await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('folders')
-          .doc(currentFolderId)
-          .get();
+      final folderDoc = await _model.getFolderDocument(currentFolderId);
 
       if (folderDoc.exists) {
         final folderData = folderDoc.data()!;
@@ -157,17 +154,9 @@ class _DocumentsPageState extends State<DocumentsPage> {
           ElevatedButton(
             onPressed: () async {
               if (controller.text.isNotEmpty) {
-                await _firestore
-                    .collection('users')
-                    .doc(user.uid)
-                    .collection('folders')
-                    .add({
-                  'name': controller.text,
-                  'createdAt': DateTime.now(),
-                  'parentFolderId': parentFolderId,
-                });
-                Navigator.pop(context);
+                await _model.addFolder(controller.text, parentFolderId);
               }
+              Navigator.pop(context);
             },
             child: const Text('Create'),
           ),
@@ -203,12 +192,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
           ElevatedButton(
             onPressed: () async {
               if (controller.text.isNotEmpty) {
-                await _firestore
-                    .collection('users')
-                    .doc(user.uid)
-                    .collection('folders')
-                    .doc(folderId)
-                    .update({'name': controller.text});
+                await _model.updateFolderName(folderId, controller.text);
                 Navigator.pop(context);
                 _updateFolderPath();
               }
@@ -262,48 +246,12 @@ class _DocumentsPageState extends State<DocumentsPage> {
         final storage = FirebaseStorage.instance;
         final oldRef = storage.refFromURL(fileUrl);
 
-        // Get original document data
-        final docSnapshot = await _firestore
-            .collection('users')
-            .doc(_auth.currentUser?.uid)
-            .collection('documents')
-            .doc(docId)
-            .get();
-
-        final originalData = docSnapshot.data() ?? {};
-
         // Create new reference with new name
-        final newRef = storage
-            .ref()
-            .child(oldRef.fullPath.replaceAll(currentName, result));
+        _controller.renameDoc(fileUrl, currentName, newName, docId);
 
-        // Copy file to new location
-        final bytes = await oldRef.getData();
-        if (bytes != null) {
-          await newRef.putData(bytes);
-          final newUrl = await newRef.getDownloadURL();
-
-          // Update Firestore with all fields
-          await _firestore
-              .collection('users')
-              .doc(_auth.currentUser?.uid)
-              .collection('documents')
-              .doc(docId)
-              .update({
-            ...originalData,
-            'title': result,
-            'fileUrl': newUrl,
-            'storagePath': newRef.fullPath,
-            'updatedAt': DateTime.now(),
-          });
-
-          // Delete old file
-          await oldRef.delete();
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Document renamed successfully')),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Document renamed successfully')),
+        );
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error renaming document: $e')),
