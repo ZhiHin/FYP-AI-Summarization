@@ -1,7 +1,5 @@
-import 'package:ai_summarization/screen/gallery.dart';
 import 'package:ai_summarization/screen/gallery_tool_view.dart';
 import 'package:flutter/material.dart';
-
 import 'document_summarize.dart';
 import 'speech_recognition.dart';
 import 'translate.dart';

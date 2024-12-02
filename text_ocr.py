@@ -24,7 +24,7 @@ class OCRRequest(BaseModel):
 async def perform_ocr(request: OCRRequest):
     try:
         logging.info(f"Processing image from URL: {request.image_url}")
-        res = model.chat(tokenizer, request.image_url, ocr_type='ocr')
+        res = model.chat_crop(tokenizer, request.image_url, ocr_type='format')
         logging.info(f"OCR result: {res}")
         return {"generated_text": res}
     except Exception as e:
