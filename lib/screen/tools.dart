@@ -81,6 +81,17 @@ class ToolsPage extends StatelessWidget {
                 );
               },
             ),
+            ListTile(
+              title: const Text("Audio Processing"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AudioProcessPage(),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
