@@ -1,3 +1,4 @@
+import tempfile
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,6 +59,13 @@ try:
 except Exception as e:
     logger.error(f"Error loading BART model: {e}")
     summarizer = None
+
+try:
+    asr_pipe = pipeline("automatic-speech-recognition", model="AqeelShafy7/AudioSangraha-Audio_to_Text")
+    print("ASR model loaded successfully.")
+except Exception as e:
+    print(f"Error loading ASR model: {e}")
+    asr_pipe = None
 
 class OCRRequest(BaseModel):
     image_url: str
@@ -301,6 +309,51 @@ async def summarize_text(request: SummarizeRequest):
         "summary": summary,
         "processing_time": processing_time
     })
+
+@app.post("/audio_to_text")
+async def audio_to_text(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(('.wav', '.mp3', '.flac')):
+        raise HTTPException(status_code=400, detail="Unsupported file format")
+
+    try:
+        # Save the uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_audio_file:
+            temp_audio_file.write(await file.read())
+            temp_audio_path = temp_audio_file.name
+
+        try:
+            # Modify pipeline call to handle long audio files
+            transcription = asr_pipe(
+                temp_audio_path, 
+                return_timestamps=True,  # Enable timestamp generation
+                chunk_length_s=30,  # Split audio into 30-second chunks
+                stride_length_s=5   # 5-second overlap between chunks
+            )
+            
+            # Extract text from the transcription result
+            full_text = transcription["text"]
+            
+            # Clean up temporary file
+            os.unlink(temp_audio_path)
+            
+            return {"transcription": full_text}
+        
+        except Exception as transcription_error:
+            # Ensure file is deleted
+            if os.path.exists(temp_audio_path):
+                os.unlink(temp_audio_path)
+            
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Transcription failed: {str(transcription_error)}"
+            )
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing audio: {str(e)}"
+        )
+    
 
 # Health Check Endpoint
 @app.get("/health")
