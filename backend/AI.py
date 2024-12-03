@@ -353,6 +353,7 @@ async def audio_to_text(file: UploadFile = File(...)):
             status_code=500, 
             detail=f"Error processing audio: {str(e)}"
         )
+    
 
 # Health Check Endpoint
 @app.get("/health")
