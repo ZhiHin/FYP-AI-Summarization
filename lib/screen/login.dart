@@ -13,30 +13,44 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  void _login() async {
+  Future<void> _login() async {
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text,
-        password: _passwordController.text,
+      if (!_formKey.currentState!.validate()) return;
+
+      // Initialize Firebase Auth separately
+      final auth = FirebaseAuth.instance;
+      
+      // Sign in and explicitly handle the UserCredential
+      final UserCredential credential = await auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
       );
 
-      // Show success message
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Login successful!')));
+      // Safely get user
+      final User? user = credential.user;
+      if (user == null) throw Exception('Authentication failed');
 
-      // Navigate to MainPage after login
+      if (!mounted) return;
+
+      // Navigate to MainPage
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-            builder: (context) =>
-                const MainPage()), // Make sure MainPage is defined
+        MaterialPageRoute(builder: (context) => const MainPage()),
+      );
+
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Authentication error: ${e.message ?? "Unknown error"}')),
       );
     } catch (e) {
-      // Show error message if login fails
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Failed to log in: $e')));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: $e')),
+      );
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

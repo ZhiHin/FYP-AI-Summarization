@@ -34,6 +34,8 @@ class Document {
   final String fileUrl;
   final String? folderId;
   final DocumentType documentType;
+  final String originalFormat;
+  final String convertedFormat;
 
   Document({
     required this.id,
@@ -45,7 +47,37 @@ class Document {
     required this.fileUrl,
     this.folderId,
     required this.documentType,
+    this.originalFormat = '',
+    this.convertedFormat = '',
   });
+
+  Document copyWith({
+    String? id,
+    String? title,
+    String? description,
+    int? size,
+    DateTime? uploadedAt,
+    int? pageCount,
+    String? fileUrl,
+    String? folderId,
+    DocumentType? documentType,
+    String? originalFormat,
+    String? convertedFormat,
+  }) {
+    return Document(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      size: size ?? this.size,
+      uploadedAt: uploadedAt ?? this.uploadedAt,
+      pageCount: pageCount ?? this.pageCount,
+      fileUrl: fileUrl ?? this.fileUrl,
+      folderId: folderId ?? this.folderId,
+      documentType: documentType ?? this.documentType,
+      originalFormat: originalFormat ?? this.originalFormat,
+      convertedFormat: convertedFormat ?? this.convertedFormat,
+    );
+  }
 
   // Factory constructor to create a Document from Firestore data
   factory Document.fromFirestore(DocumentSnapshot doc) {
@@ -60,6 +92,8 @@ class Document {
       fileUrl: data['fileUrl'],
       folderId: data['folderId'],
       documentType: getDocumentType(data['title']),
+      originalFormat: data['originalFormat'] ?? '',
+      convertedFormat: data['convertedFormat'] ?? '',
     );
   }
 
@@ -74,6 +108,8 @@ class Document {
       'fileUrl': fileUrl,
       'folderId': folderId,
       'documentType': documentType.toString().split('.').last,
+      'originalFormat': originalFormat,
+      'convertedFormat': convertedFormat,
     };
   }
 }
@@ -84,12 +120,14 @@ class Folder {
   final String name;
   final DateTime createdAt;
   final String? parentFolderId;
+  final int documentCount;
 
   Folder({
     required this.id,
     required this.name,
     required this.createdAt,
     this.parentFolderId,
+    this.documentCount = 0,
   });
 
   // Factory constructor to create a Folder from Firestore data
@@ -100,6 +138,7 @@ class Folder {
       name: data['name'],
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       parentFolderId: data['parentFolderId'],
+      documentCount: data['documentCount'] ?? 0,
     );
   }
 
@@ -109,6 +148,7 @@ class Folder {
       'name': name,
       'createdAt': createdAt,
       'parentFolderId': parentFolderId,
+      'documentCount': documentCount,
     };
   }
 }

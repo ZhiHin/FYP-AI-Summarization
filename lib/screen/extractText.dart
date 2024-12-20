@@ -1,8 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ExtractScreen extends StatefulWidget {
   final String fileUrl;
@@ -16,13 +23,207 @@ class ExtractScreen extends StatefulWidget {
 class _ExtractScreenState extends State<ExtractScreen> {
   String? _extractedText;
   String? _summary;
+  String? _displayedSummary;
   bool _isLoading = false;
+  bool _isGeneratingPdf = false;
   String _selectedSummarizationTechnique = 'extractive';
+  Timer? _timer;
+  int _index = 0;
 
   @override
   void initState() {
     super.initState();
     _extractText(widget.fileUrl);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  // New function to generate and upload PDF
+  Future<void> _generateAndUploadPdf({
+    required String content,
+    required String contentType, // 'extracted' or 'summary'
+  }) async {
+    setState(() => _isGeneratingPdf = true);
+
+    try {
+      final pdf = pw.Document();
+
+      // Define page format and margins
+      final pageFormat = PdfPageFormat.a4;
+      const margin = 40.0;
+
+      // Define text styles
+      final textStyle = pw.TextStyle(
+        fontSize: 12,
+        lineSpacing: 1.5,
+      );
+      final titleStyle = pw.TextStyle(
+        fontSize: 16,
+        fontWeight: pw.FontWeight.bold,
+      );
+
+      // Split content function
+      List<String> _splitTextIntoPages(String text, pw.TextStyle style,
+          double pageWidth, double pageHeight) {
+        final pages = <String>[];
+        String remainingText = text.trim();
+
+        final lineHeight = style.fontSize! * 1.5;
+        final availableHeight = pageHeight - 100;
+        final linesPerPage = (availableHeight / lineHeight).floor();
+        final charsPerLine = (pageWidth / (style.fontSize! * 0.6)).floor();
+        final estimatedCharsPerPage = linesPerPage * charsPerLine;
+
+        while (remainingText.isNotEmpty) {
+          String pageText = remainingText.length > estimatedCharsPerPage
+              ? remainingText.substring(0, estimatedCharsPerPage)
+              : remainingText;
+
+          final breakStrategies = [
+            () => pageText.lastIndexOf('\n\n'),
+            () => pageText.lastIndexOf('\n'),
+            () => pageText.lastIndexOf(' ', (pageText.length * 0.75).toInt()),
+            () => pageText.lastIndexOf(' '),
+          ];
+
+          int breakPoint = -1;
+          for (var strategy in breakStrategies) {
+            breakPoint = strategy();
+            if (breakPoint != -1 && breakPoint > 0) {
+              pageText = pageText.substring(0, breakPoint);
+              break;
+            }
+          }
+
+          pageText = pageText.trimRight();
+          pages.add(pageText);
+          remainingText = remainingText.substring(pageText.length).trimLeft();
+        }
+
+        return pages;
+      }
+
+      // Prepare content based on type
+      final String formattedContent = content;
+
+      // Split content into pages
+      final contentPages = _splitTextIntoPages(
+          formattedContent,
+          textStyle,
+          pageFormat.availableWidth - margin * 2,
+          pageFormat.availableHeight - margin * 2);
+
+      // Generate PDF pages
+      for (int i = 0; i < contentPages.length; i++) {
+        pdf.addPage(
+          pw.Page(
+            pageFormat: pageFormat,
+            margin: pw.EdgeInsets.all(margin),
+            build: (pw.Context context) {
+              return pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  if (i == 0) ...[
+                    pw.Text(
+                        contentType == 'extracted'
+                            ? 'Extracted Document Text'
+                            : 'Document Summary',
+                        style: titleStyle),
+                    pw.SizedBox(height: 20),
+                  ],
+                  pw.Text('Page ${i + 1} of ${contentPages.length}',
+                      style: pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+                  pw.SizedBox(height: 10),
+                  pw.Text(
+                    contentPages[i],
+                    style: textStyle,
+                    textAlign: pw.TextAlign.justify,
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      }
+
+      // Get current user
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+
+      // Generate unique filename
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      String fileName = '${contentType}_${timestamp}.pdf';
+
+      // Save PDF locally
+      final output = await getTemporaryDirectory();
+      final file = File('${output.path}/$fileName');
+      final bytes = await pdf.save();
+      await file.writeAsBytes(bytes);
+
+      // Upload to Firebase Storage
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('users/${user.uid}/documents/$fileName');
+
+      final uploadTask = storageRef.putFile(file);
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      // Save metadata to Firestore with content type specific fields
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('documents')
+          .add({
+        'title': fileName,
+        'documentType': 'pdf',
+        'contentType': contentType, // 'extracted' or 'summary'
+        'fileUrl': downloadUrl,
+        'folderId': null,
+        'pageCount': contentPages.length,
+        'size': bytes.length,
+        'uploadedAt': FieldValue.serverTimestamp(),
+        'summaryType':
+            contentType == 'summary' ? _selectedSummarizationTechnique : null,
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '${contentType == 'extracted' ? 'Extracted text' : 'Summary'} PDF saved successfully (${contentPages.length} pages)'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error generating PDF: $e')),
+      );
+    } finally {
+      setState(() => _isGeneratingPdf = false);
+    }
+  }
+
+  void _startDisplayingSummary() {
+    _index = 0;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(milliseconds: 12), (timer) {
+      if (_index < _summary!.length) {
+        setState(() {
+          _displayedSummary = _summary!.substring(0, _index) + '|';
+          _index++;
+        });
+      } else {
+        setState(() {
+          _displayedSummary = _summary;
+        });
+        _timer?.cancel();
+      }
+    });
   }
 
   // Copy text to clipboard and show a snackbar
@@ -109,10 +310,11 @@ class _ExtractScreenState extends State<ExtractScreen> {
       return;
     }
 
-     print("Selected Summarization Technique: $_selectedSummarizationTechnique"); 
-
     try {
-      setState(() => _summary = 'Generating summary...');
+      setState(() {
+        _summary = 'Generating summary...';
+        _displayedSummary = _summary;
+      });
 
       final summarizeResponse = await http
           .post(
@@ -135,13 +337,26 @@ class _ExtractScreenState extends State<ExtractScreen> {
       }
 
       final summaryData = json.decode(summarizeResponse.body);
-      setState(() => _summary = summaryData['summary']);
+      setState(() {
+        _summary = summaryData['summary'];
+        _displayedSummary = '';
+      });
+      _startDisplayingSummary();
     } on TimeoutException catch (e) {
-      setState(() => _summary = 'Error: Operation timed out - $e');
+      setState(() {
+        _summary = 'Error: Operation timed out - $e';
+        _displayedSummary = _summary;
+      });
     } on http.ClientException catch (e) {
-      setState(() => _summary = 'Error: Cannot connect to server - $e');
+      setState(() {
+        _summary = 'Error: Cannot connect to server - $e';
+        _displayedSummary = _summary;
+      });
     } catch (e) {
-      setState(() => _summary = 'Error: ${e.toString()}');
+      setState(() {
+        _summary = 'Error: ${e.toString()}';
+        _displayedSummary = _summary;
+      });
     } finally {
       setState(() => _isLoading = false);
     }
@@ -170,15 +385,30 @@ class _ExtractScreenState extends State<ExtractScreen> {
                             'Extracted Text:',
                             style: Theme.of(context).textTheme.headlineSmall,
                           ),
-                          if (_extractedText != null &&
-                              !_extractedText!.startsWith('Error') &&
-                              !_extractedText!.startsWith('Downloading'))
-                            IconButton(
-                              icon: const Icon(Icons.copy),
-                              onPressed: () => _copyToClipboard(
-                                  _extractedText!, 'Extracted text'),
-                              tooltip: 'Copy extracted text',
-                            ),
+                          Row(
+                            children: [
+                              if (_extractedText != null &&
+                                  !_extractedText!.startsWith('Error') &&
+                                  !_extractedText!
+                                      .startsWith('Downloading')) ...[
+                                IconButton(
+                                  icon: const Icon(Icons.copy),
+                                  onPressed: () => _copyToClipboard(
+                                      _extractedText!, 'Extracted text'),
+                                  tooltip: 'Copy extracted text',
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.picture_as_pdf),
+                                  onPressed: _isGeneratingPdf
+                                      ? null
+                                      : () => _generateAndUploadPdf(
+                                            content: _extractedText!,
+                                            contentType: 'extracted',
+                                          ),
+                                ),
+                              ]
+                            ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -195,8 +425,6 @@ class _ExtractScreenState extends State<ExtractScreen> {
                             onChanged: (value) {
                               setState(() {
                                 _selectedSummarizationTechnique = value!;
-                                print(
-                                    "Selected summarization technique: $_selectedSummarizationTechnique");
                               });
                             },
                           ),
@@ -207,8 +435,6 @@ class _ExtractScreenState extends State<ExtractScreen> {
                             onChanged: (value) {
                               setState(() {
                                 _selectedSummarizationTechnique = value!;
-                                print(
-                                    "Selected summarization technique: $_selectedSummarizationTechnique");
                               });
                             },
                           ),
@@ -219,7 +445,8 @@ class _ExtractScreenState extends State<ExtractScreen> {
                         onPressed: _summarizeText,
                         child: const Text('Summarize Text'),
                       ),
-                      if (_summary != null && _summary!.isNotEmpty)
+                      if (_displayedSummary != null &&
+                          _displayedSummary!.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8.0),
                           child: Column(
@@ -233,18 +460,35 @@ class _ExtractScreenState extends State<ExtractScreen> {
                                     style:
                                         Theme.of(context).textTheme.titleLarge,
                                   ),
-                                  if (!_summary!.startsWith('Error') &&
-                                      !_summary!.startsWith('Generating'))
-                                    IconButton(
-                                      icon: const Icon(Icons.copy),
-                                      onPressed: () => _copyToClipboard(
-                                          _summary!, 'Summary'),
-                                      tooltip: 'Copy summary',
-                                    ),
+                                  Row(
+                                    children: [
+                                      if (!_displayedSummary!
+                                              .startsWith('Error') &&
+                                          !_displayedSummary!
+                                              .startsWith('Generating')) ...[
+                                        IconButton(
+                                          icon: const Icon(Icons.copy),
+                                          onPressed: () => _copyToClipboard(
+                                              _summary!, 'Summary'),
+                                          tooltip: 'Copy summary',
+                                        ),
+                                        IconButton(
+                                          icon:
+                                              const Icon(Icons.picture_as_pdf),
+                                          onPressed: _isGeneratingPdf
+                                              ? null
+                                              : () => _generateAndUploadPdf(
+                                                    content: _summary!,
+                                                    contentType: 'summary',
+                                                  ),
+                                        ),
+                                      ]
+                                    ],
+                                  ),
                                 ],
                               ),
                               Text(
-                                _summary!,
+                                _displayedSummary!,
                                 style: const TextStyle(fontSize: 16),
                               ),
                             ],
