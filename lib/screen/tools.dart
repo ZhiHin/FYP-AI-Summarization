@@ -1,6 +1,7 @@
 import 'package:ai_summarization/screen/gallery_tool_view.dart';
 import 'package:flutter/material.dart';
 import 'audioProcess.dart';
+import 'document_converter_page.dart';
 import 'document_summarize.dart';
 import 'speech_recognition.dart';
 import 'translate.dart';
@@ -27,10 +28,16 @@ class ToolsPage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             ListTile(
-              title: const Text("PDF to Word Converter"),
+              title: const Text("Document Converter"),
               onTap: () {
-                // Implement functionality
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DocumentConverterPage(),
+                  ),
+                );
               },
+
             ),
             ListTile(
               title: const Text("Image Resizer"),
