@@ -1,91 +1,105 @@
 import 'package:ai_summarization/controller/detect_text_control.dart';
+import 'package:ai_summarization/screen/image_zoom.dart';
+import 'package:ai_summarization/screen/summarize_ocr_view.dart';
 import 'package:flutter/material.dart';
 
 class DetectTextView extends StatefulWidget {
   final List<String> imageUrls;
 
-  const DetectTextView({Key? key, required this.imageUrls}) : super(key: key);
+  const DetectTextView({super.key, required this.imageUrls});
 
   @override
   _DetectTextViewState createState() => _DetectTextViewState();
 }
 
 class _DetectTextViewState extends State<DetectTextView> {
-  final DetectTextControl _control = DetectTextControl();
-  bool _combineText = false;
+  final _control = DetectTextControl();
+  final List<TextEditingController> _textControllers = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _initialize();
+    _initializeTextControllers();
   }
 
-  Future<void> _initialize() async {
-    try {
-      await _control.getLocalIp();
+  @override
+  void dispose() {
+    for (var controller in _textControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _initializeTextControllers() async {
+    for (var url in widget.imageUrls) {
+      final text = await _control.generateFormatTextFromImage(url);
+      _textControllers.add(TextEditingController(text: text));
+    }
+    if (mounted) {
       setState(() {
         _isLoading = false;
       });
-      _showSplitOrCombineDialog();
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      _showErrorDialog('Failed to get local IP address');
     }
   }
 
-  Future<void> _showSplitOrCombineDialog() async {
-    bool? combine = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Split or Combine'),
-          content: const Text(
-              'Do you want to split or combine the text from all images?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(false); // Split
-              },
-              child: const Text('Split'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(true); // Combine
-              },
-              child: const Text('Combine'),
-            ),
-          ],
+  Widget _buildSplitTextView() {
+    return PageView.builder(
+      itemCount: widget.imageUrls.length,
+      itemBuilder: (context, index) {
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FullImageView(
+                        imageUrl: widget.imageUrls[index],
+                      ),
+                    ),
+                  );
+                },
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.network(
+                    widget.imageUrls[index],
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: TextField(
+                  controller: _textControllers[index],
+                  maxLines: null,
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    labelText: 'Page ${index + 1}',
+                  ),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
-
-    if (combine != null) {
-      setState(() {
-        _combineText = combine;
-      });
-    }
   }
 
-  Future<void> _showErrorDialog(String message) async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Error'),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
+  void _navigateToSummarize() {
+    List<String> detectedTexts = [];
+    for (var controller in _textControllers) {
+      detectedTexts.add(controller.text);
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SummarizeOcrView(
+          imageUrls: widget.imageUrls,
+          detectedTexts: detectedTexts,
+        ),
+      ),
     );
   }
 
@@ -93,91 +107,39 @@ class _DetectTextViewState extends State<DetectTextView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Text Detection'),
+        title: const Text('Detect Text View'),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (String result) {
+              if (result == 'save') {
+                _control.saveOriginal();
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'save',
+                child: Text('Save'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _combineText
-              ? _buildCombinedTextView()
-              : _buildSplitTextView(),
-    );
-  }
-
-  Widget _buildCombinedTextView() {
-    return FutureBuilder<List<String>>(
-      future: Future.wait(
-          widget.imageUrls.map((url) => _control.generateTextFromImage(url))),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        } else if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        } else {
-          String combinedText = snapshot.data!.join('\n\n');
-          return Column(
-            children: [
-              Expanded(
-                child: PageView.builder(
-                  itemCount: widget.imageUrls.length,
-                  itemBuilder: (context, index) {
-                    return Image.network(widget.imageUrls[index]);
-                  },
+          : Column(
+              children: [
+                Expanded(
+                  child: _buildSplitTextView(),
                 ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: TextField(
-                      controller: TextEditingController(text: combinedText),
-                      maxLines: null,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        labelText: 'Combined Text',
-                      ),
-                    ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: ElevatedButton(
+                    onPressed: _navigateToSummarize,
+                    child: const Text('Summarize'),
                   ),
                 ),
-              ),
-            ],
-          );
-        }
-      },
-    );
-  }
-
-  Widget _buildSplitTextView() {
-    return ListView.builder(
-      itemCount: widget.imageUrls.length,
-      itemBuilder: (context, index) {
-        return Column(
-          children: [
-            Image.network(widget.imageUrls[index]),
-            FutureBuilder<String>(
-              future: _control.generateTextFromImage(widget.imageUrls[index]),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const CircularProgressIndicator();
-                } else if (snapshot.hasError) {
-                  return Text('Error: ${snapshot.error}');
-                } else {
-                  return Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: TextField(
-                      controller: TextEditingController(text: snapshot.data),
-                      maxLines: null,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        labelText: 'Generated Text',
-                      ),
-                    ),
-                  );
-                }
-              },
+              ],
             ),
-          ],
-        );
-      },
     );
   }
 }

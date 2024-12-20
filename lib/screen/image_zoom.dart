@@ -1,10 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 
 class FullImageView extends StatelessWidget {
-  final String imageUrl;
-
-  const FullImageView({Key? key, required this.imageUrl}) : super(key: key);
+  final String? imageUrl;
+  final String? imagePath;
+  const FullImageView({super.key, this.imageUrl, this.imagePath});
 
   @override
   Widget build(BuildContext context) {
@@ -13,8 +15,9 @@ class FullImageView extends StatelessWidget {
         children: [
           Center(
             child: PhotoView(
-              imageProvider: NetworkImage(imageUrl),
-            ),
+                imageProvider: imagePath != null
+                    ? FileImage(File(imagePath!))
+                    : NetworkImage(imageUrl!)),
           ),
           Positioned(
             top: 40,
