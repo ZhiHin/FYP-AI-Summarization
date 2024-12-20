@@ -1,11 +1,14 @@
 import json
+import string
 import tempfile
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pkg_resources import resource_filename
 from pydantic import BaseModel
-from transformers import AutoModel, AutoTokenizer, pipeline
-from PIL import Image
+import spacy
+from transformers import AutoModel, AutoTokenizer, pipeline, AutoModelForSeq2SeqLM
+from PIL import Image, ImageFilter
 import requests
 from io import BytesIO
 import torch
@@ -15,6 +18,9 @@ import re
 import os
 import time
 from enum import Enum
+from symspellpy.symspellpy import SymSpell
+import spacy
+from happytransformer import HappyTextToText, TTSettings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,22 +38,72 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load the pre-trained OCR model and tokenizer
-tokenizer = AutoTokenizer.from_pretrained('ucaslcl/GOT-OCR2_0', trust_remote_code=True)
-model = AutoModel.from_pretrained('ucaslcl/GOT-OCR2_0', trust_remote_code=True, low_cpu_mem_usage=True, device_map='cuda', use_safetensors=True, pad_token_id=tokenizer.eos_token_id)
-model = model.eval().cuda()
 
-# Initialize the abstractive summarization pipeline (FLAN-T5)
+# Initialize SymSpell 
+sym_spell = SymSpell(max_dictionary_edit_distance=15, prefix_length=16)
+dictionary_path = resource_filename('symspellpy', 'frequency_dictionary_en_82_765.txt')
+bigram_path = resource_filename('symspellpy', 'frequency_bigramdictionary_en_243_342.txt')
+dictionary_pickle_path = resource_filename('symspellpy', 'symspelldictionary.pkl')
 try:
-    summarizer = pipeline(
-        "text2text-generation", 
-        model="spacemanidol/flan-t5-large-website-summarizer",
-        device=-1  # Use CPU by default for compatibility
-    )
-    logger.info("Summarization model (FLAN-T5) loaded successfully")
+    start_time = time.time()
+    if not os.path.exists(dictionary_pickle_path):
+        logging.info("SymSpell pickle not found, loading dictionary from text file")
+        if sym_spell.load_dictionary(dictionary_path, term_index=0, count_index=1):
+            logging.info("SymSpell dictionary loaded successfully from text file")
+            sym_spell.save_pickle(dictionary_pickle_path)
+            logging.info("SymSpell dictionary saved to pickle file")
+        else:
+            logging.error("Dictionary file not found")
+    else:
+        sym_spell.load_pickle(dictionary_pickle_path)
+        end_time = time.time()
+        loading_time = end_time - start_time
+        logging.info(f"SymSpell dictionary loaded successfully from pickle file in {loading_time:.2f} seconds")
 except Exception as e:
-    logger.error(f"Error loading FLAN-T5 model: {e}")
-    summarizer = None
+    logging.error(f"Error loading dictionary: {e}")
+
+try:
+    if sym_spell.load_bigram_dictionary(bigram_path, term_index=0, count_index=2):
+        logging.info("SymSpell bigram dictionary loaded successfully")
+    else:
+        logging.error("Bigram dictionary file not found")
+except Exception as e:
+    logging.error(f"Error loading bigram dictionary: {e}")
+
+# Load spacy model for NLP
+try:
+    nlp = spacy.load("en_core_web_sm")
+    logging.info("spaCy model loaded successfully")
+except Exception as e:
+    logging.error(f"Error loading spaCy model: {e}")
+
+# Initialize the OCR model (GOT-OCR2.0)
+try:
+    tokenizer = AutoTokenizer.from_pretrained('ucaslcl/GOT-OCR2_0', trust_remote_code=True)
+    model = AutoModel.from_pretrained('ucaslcl/GOT-OCR2_0', trust_remote_code=True, low_cpu_mem_usage=True, device_map='cuda', use_safetensors=True, pad_token_id=tokenizer.eos_token_id)
+    model = model.eval().cuda()
+    logger.info("GOT OCR 2.0 model loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading OCR model: {e}")
+    model = None
+
+# Initialize the grammar correcter (T5-Base-Grammar-Correction)
+try:
+    happy_tt = HappyTextToText("T5", "vennify/t5-base-grammar-correction")
+    args = TTSettings(num_beams=5, min_length=1)
+    logger.info("T5-Base Grammar Correction loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading T5-Base Grammar Correction model: {e}")
+    happy_tt = None
+
+# Initialize the advanced spell checker (T5-Base-SpellChecker)
+try:
+    tokenizer2 = AutoTokenizer.from_pretrained("Bhuvana/t5-base-spellchecker", legacy=False)
+    model2 = AutoModelForSeq2SeqLM.from_pretrained("Bhuvana/t5-base-spellchecker")
+    logger.info("T5-Base Spellchecker loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading T5-Base Spellchecker Correction model: {e}")
+    model2 = None
 
 # Initialize the extractive summarization pipeline (BART)
 try:
@@ -210,13 +266,116 @@ def structure_summary(summary: str) -> str:
 
     return structured_summary
 
+
 # OCR Endpoint
-@app.post("/ocr")
+
+def correct_text(text: str) -> str:
+    """Correct text using SymSpell and retain appropriate newline characters."""
+    # Remove extra whitespace but retain newlines
+    text = re.sub(r'[ \t]+', ' ', text).strip()
+    logging.info(f"Text after removing extra whitespace: {text}")
+    
+    # Remove hyphenation at line breaks
+    text = re.sub(r'-\s*\n\s*', '', text)
+    logging.info(f"Text after removing hyphenation: {text}")
+    
+    # Add space after every comma and period
+    text = re.sub(r'([,.])(\S)', r'\1 \2', text)
+    logging.info(f"Text after adding space after commas and periods: {text}")
+
+    # Remove newline if the character before is not a period or question mark
+    text = re.sub(r'(?<![?.])\n', ' ', text)
+    logging.info(f"Text after handling newlines: {text}")
+    
+    # Split text by newlines to preserve them
+    paragraphs = text.split('\n')
+    logging.info(f"Text split into paragraphs: {paragraphs}")
+    
+    corrected_paragraphs = []
+    for paragraph in paragraphs:
+        # Use spaCy to separate sentences
+        doc = nlp(paragraph)
+        sentences = [sent.text for sent in doc.sents]
+        logging.info(f"Sentences identified by spaCy: {sentences}")
+        
+        # Correct each sentence using SymSpell
+        corrected_sentences = []
+        for sentence in sentences:
+            if re.search(r'\d', sentence):
+                # Skip correction for sentences containing numbers
+                corrected_sentences.append(sentence)
+                logging.info(f"Skipped correction for sentence with numbers: {sentence}")
+            else:
+                suggestions = sym_spell.lookup_compound(sentence, max_edit_distance=12)
+                corrected_sentence = suggestions[0].term.capitalize()
+                corrected_sentences.append(corrected_sentence)
+        # Combine corrected sentences
+        corrected_paragraph = '. '.join(corrected_sentences)
+        corrected_paragraph = enhance_text_with_t5(corrected_paragraph)
+        corrected_paragraphs.append(corrected_paragraph)
+    
+    # Combine corrected paragraphs, retaining newlines
+    corrected_text = '\n\n'.join(corrected_paragraphs)
+    
+    return corrected_text
+
+def process_text_in_chunks(text: str, process_func, chunk_size: int = 128) -> str:
+    """Process text in chunks using the provided processing function."""
+    words = text.split()
+    chunks = []
+    current_chunk = []
+
+    for word in words:
+        current_chunk.append(word)
+        if len(' '.join(current_chunk)) > chunk_size:
+            chunks.append(' '.join(current_chunk[:-1]))
+            current_chunk = [word]
+
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
+    logging.info(f"Chunks to be processed: {chunks}")
+
+    processed_chunks = []
+    for chunk in chunks:
+        processed_chunk = replace_mispelled_words(chunk)
+        processed_chunk = process_func(chunk)
+        logging.info(f"Processed chunk: {processed_chunk}")
+        processed_chunks.append(processed_chunk)    
+    return ' '.join(processed_chunks)
+
+def replace_mispelled_words(chunk):
+    input_ids = tokenizer2.encode("" + chunk, return_tensors='pt')
+    sample_output = model2.generate(
+        input_ids,
+        do_sample=True,
+        max_length=50,
+        top_p=0.99,
+        num_return_sequences=1
+    )
+    res = tokenizer2.decode(sample_output[0], skip_special_tokens=True)
+    return res
+
+def enhance_text_with_t5(text: str) -> str:
+    """Enhance text using the T5-Base model."""
+    if happy_tt:
+        def process_chunk(chunk):
+            result = happy_tt.generate_text("grammar: " + chunk, args=args)
+            return result.text
+
+        enhanced_text = process_text_in_chunks(text, process_chunk)
+        logging.info(f"Enhanced text: {enhanced_text}")
+        return enhanced_text
+    else:
+        logging.warning("T5-Base model not available for text enhancement.")
+        return text
+
+
+@app.post("/format")
 async def perform_ocr(request: OCRRequest):
     try:
         logging.info(f"Processing image from URL: {request.image_url}")
-        res = model.chat(tokenizer, request.image_url, ocr_type='ocr')
-        logging.info(f"OCR result: {res}")
+        res = model.chat_crop(tokenizer, request.image_url, ocr_type='format')
+        res = correct_text(res)
         return {"generated_text": res}
     except Exception as e:
         logging.error(f"Error processing image: {e}")
@@ -254,6 +413,14 @@ async def extract_text(file: UploadFile = File(...)):
     })
 
 # Summarization Endpoint
+#class SummarizationType(str, Enum):
+#   abstractive = "abstractive"
+#   extractive = "extractive"
+
+#class SummarizeRequest(BaseModel):
+#   text: str 
+#   max_length: int = 150
+#  summary_type: SummarizationType
 @app.post("/summarize")
 async def summarize_text(request: SummarizeRequest):
     """Summarize text using FLAN-T5 model or extractive model with flexible length and structured display."""

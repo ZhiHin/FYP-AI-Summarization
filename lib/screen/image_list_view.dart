@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:ai_summarization/controller/image_list_control.dart';
+import 'package:ai_summarization/screen/image_zoom.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:insta_image_viewer/insta_image_viewer.dart';
@@ -125,13 +126,18 @@ class _ImageListViewState extends State<ImageListView> {
         itemCount: widget.images.length,
         itemBuilder: (context, index) {
           return ListTile(
-            leading: InstaImageViewer(
-              child: Image.file(
-                File(widget.images[index].path),
-                width: 50,
-                height: 50,
-                fit: BoxFit.cover,
-              ),
+            leading: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => FullImageView(
+                      imagePath: widget.images[index].path,
+                    ),
+                  ),
+                );
+              },
+              child: Image.file(File(widget.images[index].path)),
             ),
             title: Text(widget.images[index].name),
             trailing: Row(

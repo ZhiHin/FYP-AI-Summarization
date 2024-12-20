@@ -58,6 +58,7 @@ dependencies:
   insta_image_viewer: ^1.0.4
   http: ^1.2.2 
   open_file: any
+  blur_detection: ^1.0.0
 
 
 dev_dependencies:

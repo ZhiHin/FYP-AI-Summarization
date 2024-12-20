@@ -17,13 +17,9 @@ class DetectTextControl {
     return null;
   }
 
-  Future<String> generateTextFromImage(String imageUrl) async {
-    if (localIp == null) {
-      throw Exception('Local IP is not set');
-    }
-
+  Future<String> generateFormatTextFromImage(String imageUrl) async {
     final response = await http.post(
-      Uri.parse('http://192.168.0.171:8000/ocr'),
+      Uri.parse('http://192.168.0.171:8000/format'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'image_url': imageUrl}),
     );
@@ -34,4 +30,6 @@ class DetectTextControl {
       throw Exception('Failed to generate text');
     }
   }
+
+  Future<void> saveOriginal() async {}
 }
