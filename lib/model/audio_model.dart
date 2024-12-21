@@ -21,7 +21,7 @@ class AudioModel {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return AudioModel(
       audioId: data['audioId'] ?? '',
-      fileName: data['fileName'] ?? '',
+      fileName: data['name'] ?? '',
       fileUrl: data['fileUrl'] ?? '',
       uploadedAt: data['uploadedAt'] ?? Timestamp.now(),
       transcribed: data['transcribed'] ?? false,
@@ -32,7 +32,7 @@ class AudioModel {
   Map<String, dynamic> toFirestore() {
     return {
       'audioId': audioId,
-      'fileName': fileName,
+      'name': fileName,
       'fileUrl': fileUrl,
       'uploadedAt': uploadedAt,
       'transcribed': transcribed,

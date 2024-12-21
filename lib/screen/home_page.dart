@@ -1,29 +1,284 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import '../components/folder_card.dart';
 import '../components/nav_button.dart';
 import '../components/file_card.dart';
+import 'package:intl/intl.dart';
+
+import 'translate.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final Function(int, {String? documentTypeFilter}) onNavigateToPage;
+
+  const HomePage({super.key, required this.onNavigateToPage});
 
   @override
   _HomePageState createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  final List<double> _dragOffsets =
-      List.filled(5, 0.0); // Store drag offsets for each file card
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  void _handleEdit(int index) {
+  List<Map<String, dynamic>> _recentFiles = [];
+  Map<String, int> _fileCounts = {
+    'documents': 0,
+    'images': 0,
+    'audios': 0,
+  };
+  final List<double> _dragOffsets = List.filled(5, 0.0);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    await Future.wait([
+      _loadRecentFiles(),
+      _loadFileCounts(),
+    ]);
+  }
+
+  Future<void> _loadRecentFiles() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        // Fetch recent files from each collection with a larger limit
+        final docSnapshot = await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('documents')
+            .orderBy('uploadedAt', descending: true)
+            .limit(
+                20) // Increased limit to ensure we get enough documents to compare
+            .get();
+
+        final imageSnapshot = await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('images')
+            .orderBy('uploadedAt', descending: true)
+            .limit(20) // Increased limit
+            .get();
+
+        final audioSnapshot = await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('audios')
+            .orderBy('uploadedAt', descending: true)
+            .limit(20) // Increased limit
+            .get();
+
+        // Combine all files with their timestamps
+        final allRecentFiles = [
+          ...docSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              ...data,
+              'id': doc.id,
+              'type': 'documents',
+              'name': data['name'] ?? 'Unnamed Document',
+              'uploadedAt': data['uploadedAt'] ?? Timestamp.now(),
+              'pageCount': data['pageCount'] ?? 0,
+            };
+          }),
+          ...imageSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              ...data,
+              'id': doc.id,
+              'type': 'images',
+              'name': data['name'] ?? 'Unnamed Image',
+              'uploadedAt': data['uploadedAt'] ?? Timestamp.now(),
+            };
+          }),
+          ...audioSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              ...data,
+              'id': doc.id,
+              'type': 'audios',
+              'name': data['name'] ?? 'Unnamed Audio',
+              'uploadedAt': data['uploadedAt'] ?? Timestamp.now(),
+            };
+          }),
+        ];
+
+        // Sort all files by uploadedAt timestamp
+        allRecentFiles.sort((a, b) {
+          final aTime = (a['uploadedAt'] as Timestamp).toDate();
+          final bTime = (b['uploadedAt'] as Timestamp).toDate();
+          return bTime.compareTo(aTime); // Most recent first
+        });
+
+        // Take only the 5 most recent files
+        setState(() {
+          _recentFiles = allRecentFiles.take(5).toList();
+        });
+      }
+    } catch (e) {
+      _showError("Error loading recent files: $e");
+    }
+  }
+
+  Future<void> _loadFileCounts() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        final counts = await Future.wait([
+          _getCollectionCount(user.uid, 'documents'),
+          _getCollectionCount(user.uid, 'images'),
+          _getCollectionCount(user.uid, 'audios'),
+        ]);
+
+        setState(() {
+          _fileCounts = {
+            'documents': counts[0],
+            'images': counts[1],
+            'audios': counts[2],
+          };
+        });
+      }
+    } catch (e) {
+      _showError("Error loading file counts: $e");
+    }
+  }
+
+  Future<int> _getCollectionCount(String userId, String collection) async {
+    final snapshot = await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection(collection)
+        .count()
+        .get();
+    return snapshot.count ?? 0;
+  }
+
+  void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Edit clicked for File ${index + 1}")),
+      SnackBar(content: Text(message)),
     );
   }
 
-  void _handleDelete(int index) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Delete clicked for File ${index + 1}")),
-    );
+  Future<void> _handleEdit(int index) async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null && index < _recentFiles.length) {
+        final file = _recentFiles[index];
+        final fileId = file['id'];
+        final fileType = file['type'];
+
+        await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection(fileType)
+            .doc(fileId)
+            .update({
+          'lastEdited': FieldValue.serverTimestamp(),
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("File ${index + 1} updated")),
+        );
+      }
+    } catch (e) {
+      _showError("Error updating file: $e");
+    }
+  }
+
+  Future<void> _handleDelete(int index) async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null && index < _recentFiles.length) {
+        final file = _recentFiles[index];
+        final fileId = file['id'];
+        final fileName = file['name'];
+        final fileType = file['type'];
+
+        // Delete from Firestore
+        await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection(fileType)
+            .doc(fileId)
+            .delete();
+
+        // Delete from Storage
+        await _storage.ref('users/${user.uid}/$fileType/$fileName').delete();
+
+        setState(() {
+          _recentFiles.removeAt(index);
+          _fileCounts[fileType] = (_fileCounts[fileType] ?? 0) - 1;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("File ${index + 1} deleted")),
+        );
+      }
+    } catch (e) {
+      _showError("Error deleting file: $e");
+    }
+  }
+
+  Future<void> _handleSearch(String query) async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        // Search in all collections
+        final docSnapshot = await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('documents')
+            .where('name', isGreaterThanOrEqualTo: query)
+            .where('name', isLessThanOrEqualTo: query + '\uf8ff')
+            .get();
+
+        final imageSnapshot = await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('images')
+            .where('name', isGreaterThanOrEqualTo: query)
+            .where('name', isLessThanOrEqualTo: query + '\uf8ff')
+            .get();
+
+        final audioSnapshot = await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('audios')
+            .where('name', isGreaterThanOrEqualTo: query)
+            .where('name', isLessThanOrEqualTo: query + '\uf8ff')
+            .get();
+
+        final searchResults = [
+          ...docSnapshot.docs.map((doc) => {
+                ...doc.data(),
+                'id': doc.id,
+                'type': 'documents',
+              }),
+          ...imageSnapshot.docs.map((doc) => {
+                ...doc.data(),
+                'id': doc.id,
+                'type': 'images',
+              }),
+          ...audioSnapshot.docs.map((doc) => {
+                ...doc.data(),
+                'id': doc.id,
+                'type': 'audios',
+              }),
+        ];
+
+        setState(() {
+          _recentFiles = searchResults;
+        });
+      }
+    } catch (e) {
+      _showError("Error searching files: $e");
+    }
   }
 
   @override
@@ -36,70 +291,93 @@ class _HomePageState extends State<HomePage> {
           "Home",
           style: TextStyle(color: Colors.black),
         ),
+        // actions: [
+        //   IconButton(
+        //     icon: const Icon(Icons.logout, color: Colors.black),
+        //     onPressed: () async {
+        //       await _auth.signOut();
+        //       // Navigate to login screen
+        //     },
+        //   ),
+        // ],
       ),
       body: CustomScrollView(
         slivers: [
+          // Search Bar
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Search Bar
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search, color: Colors.blue),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        onChanged: _handleSearch,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: "Search files...",
+                          hintStyle: TextStyle(color: Colors.blue),
+                        ),
+                      ),
                     ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.search, color: Colors.blue),
-                        SizedBox(width: 10),
-                        Text("Search files...",
-                            style: TextStyle(color: Colors.blue)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
           // Folder Cards Section
           SliverToBoxAdapter(
             child: SizedBox(
-              height: 150, // Adjust height as needed
+              height: 150,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: const [
-                  FolderCard(
-                    icon: Icons.folder,
-                    label: "DOCUMENTS",
-                    count: "58 Files",
-                    color: Colors.orangeAccent,
+                children: [
+                  GestureDetector(
+                    onTap: () => widget.onNavigateToPage(1,
+                        documentTypeFilter: 'documents'),
+                    child: FolderCard(
+                      icon: Icons.description,
+                      label: "DOCUMENTS",
+                      count: "${_fileCounts['documents']} Files",
+                      color: Colors.orangeAccent,
+                    ),
                   ),
-                  SizedBox(width: 10),
-                  FolderCard(
-                    icon: Icons.image,
-                    label: "IMAGES",
-                    count: "36 Files",
-                    color: Colors.greenAccent,
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: () => widget.onNavigateToPage(1,
+                        documentTypeFilter: 'images'),
+                    child: FolderCard(
+                      icon: Icons.image,
+                      label: "IMAGES",
+                      count: "${_fileCounts['images']} Files",
+                      color: Colors.greenAccent,
+                    ),
                   ),
-                  SizedBox(width: 10),
-                  FolderCard(
-                    icon: Icons.picture_as_pdf,
-                    label: "PDFs",
-                    count: "120 Files",
-                    color: Colors.blueAccent,
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: () => widget.onNavigateToPage(1,
+                        documentTypeFilter: 'audios'),
+                    child: FolderCard(
+                      icon: Icons.audiotrack,
+                      label: "AUDIO",
+                      count: "${_fileCounts['audios']} Files",
+                      color: Colors.blueAccent,
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          // Tools Section
+          //Tools Section
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -114,7 +392,7 @@ class _HomePageState extends State<HomePage> {
                             fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () => widget.onNavigateToPage(3),
                         child: const Text("View All"),
                       ),
                     ],
@@ -127,12 +405,20 @@ class _HomePageState extends State<HomePage> {
           // Tools Horizontal List
           SliverToBoxAdapter(
             child: SizedBox(
-              height:
-                  85, // Height that accommodates both icon and two lines of text
+              height: 85,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: const [
+                children: [
+                  NavButton(
+                    icon: Icons.translate,
+                    label: "Translate",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const TranslateScreen()),
+                    ),
+                  ),
                   NavButton(
                     icon: Icons.picture_as_pdf,
                     label: "PDF Tools",
@@ -153,12 +439,12 @@ class _HomePageState extends State<HomePage> {
                     icon: Icons.folder,
                     label: "Import Folders",
                   ),
-                  SizedBox(width: 8), // Right padding
+                  SizedBox(width: 8),
                 ],
               ),
             ),
           ),
-          // File Categories Section
+          // Recent Files Section
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -168,42 +454,12 @@ class _HomePageState extends State<HomePage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        "All Files",
+                        "Recent Files",
                         style: TextStyle(
                             fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       TextButton(
-                        onPressed: () {},
-                        child: const Text("View All"),
-                      ),
-                    ],
-                  ),
-                  const Row(
-                    children: [
-                      FileCategoryCard(
-                        icon: Icons.folder,
-                        label: "Document",
-                        count: "58 Files",
-                      ),
-                      SizedBox(width: 10),
-                      FileCategoryCard(
-                        icon: Icons.image,
-                        label: "Gallery",
-                        count: "46 Files",
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Recents",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      TextButton(
-                        onPressed: () {},
+                        onPressed: () => widget.onNavigateToPage(1),
                         child: const Text("View All"),
                       ),
                     ],
@@ -218,6 +474,9 @@ class _HomePageState extends State<HomePage> {
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
+                  if (index >= _recentFiles.length) return null;
+                  final file = _recentFiles[index];
+
                   return Stack(
                     children: [
                       Positioned.fill(
@@ -297,10 +556,12 @@ class _HomePageState extends State<HomePage> {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4.0),
                             child: FileCard(
-                              fileName: "Example ${index + 1}.pdf",
-                              date: "12-09-2024",
-                              time: "15:30",
-                              pages: "12 Pages",
+                              fileName: file['name'] ?? '',
+                              date: DateFormat('dd-MM-yyyy').format(
+                                  (file['uploadedAt'] as Timestamp).toDate()),
+                              time: DateFormat('HH:mm:ss').format(
+                                  (file['uploadedAt'] as Timestamp).toDate()),
+                              pages: (file['pageCount']?.toString()) ?? '0',
                               onEdit: () => _handleEdit(index),
                               onDelete: () => _handleDelete(index),
                             ),
@@ -310,13 +571,12 @@ class _HomePageState extends State<HomePage> {
                     ],
                   );
                 },
-                childCount: 5,
+                childCount: _recentFiles.length,
               ),
             ),
           ),
-          // Bottom padding
           const SliverToBoxAdapter(
-            child: SizedBox(height: 80), // Space for FloatingActionButton
+            child: SizedBox(height: 80),
           ),
         ],
       ),

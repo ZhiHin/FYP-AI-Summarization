@@ -14,29 +14,49 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
-  int _currentIndex = 0; // Keep track of the selected index
-  final List<Widget> _pages = [
-    const HomePage(), // Home Page
-    const DocumentsPage(), // Document Page
-    const CameraView(), // Camera Page
-    const ToolsPage(), // Tools Page
-    const ProfilePage(), // Profile Page
-  ];
+  int _currentIndex = 0;
+  String? _documentTypeFilter;
+  final List<Widget> _pages = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize pages with the navigation function
+    _pages.addAll([
+      HomePage(onNavigateToPage: _navigateToPage),
+      DocumentsPage(documentTypeFilter: _documentTypeFilter),
+      const CameraView(),
+      const ToolsPage(),
+      const ProfilePage(),
+    ]);
+  }
+
+  void _navigateToPage(int index, {String? documentTypeFilter}) {
+    setState(() {
+      _currentIndex = index;
+      _documentTypeFilter = documentTypeFilter;
+      _pages[1] = DocumentsPage(documentTypeFilter: _documentTypeFilter);
+    });
+  }
 
   void _onItemTapped(int index) {
     setState(() {
-      _currentIndex = index; // Update the current index
+      _currentIndex = index;
+      // Reset document filter when navigating to Documents page via bottom nav
+      if (index == 1) {
+        _documentTypeFilter = null;
+        _pages[1] = const DocumentsPage(documentTypeFilter: null);
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_currentIndex], // Display the current page
+      body: _pages[_currentIndex],
       bottomNavigationBar: BottomNavBar(
-        // Use the BottomNavBar widget
-        currentIndex: _currentIndex, // Pass current index to the BottomNavBar
-        onTap: _onItemTapped, // Handle taps
+        currentIndex: _currentIndex,
+        onTap: _onItemTapped,
       ),
     );
   }

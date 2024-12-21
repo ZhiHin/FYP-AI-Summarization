@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class TranslationService {
-  final String apiKey = 'AIzaSyBhfIFnrXINh1sm30nDnFwv0SCrGa4y5zI';
+  final String apiKey = 'AIzaSyByDAK7GNIOrmcpqq5wRozrxQUOSH5EOfA';
 
   Future<String> translateText(String text, String targetLanguage) async {
     final url = Uri.https(

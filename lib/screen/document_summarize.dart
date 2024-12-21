@@ -76,7 +76,7 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
           .doc(user.uid)
           .collection('documents')
           .add({
-        'title': fileName,
+        'name': fileName,
         'description': '',
         'size': fileSize,
         'uploadedAt': FieldValue.serverTimestamp(),
@@ -140,7 +140,7 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
                       itemBuilder: (context, index) {
                         final document = documents[index];
                         final data = document.data() as Map<String, dynamic>;
-                        final fileName = data['title'] as String;
+                        final fileName = data['name'] as String;
                         final uploadDate =
                             (data['uploadedAt'] as Timestamp?)?.toDate() ??
                                 DateTime.now();
