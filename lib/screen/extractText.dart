@@ -179,7 +179,7 @@ class _ExtractScreenState extends State<ExtractScreen> {
           .doc(user.uid)
           .collection('documents')
           .add({
-        'title': fileName,
+        'name': fileName,
         'documentType': 'pdf',
         'contentType': contentType, // 'extracted' or 'summary'
         'fileUrl': downloadUrl,

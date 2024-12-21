@@ -183,7 +183,7 @@ Future<void> _generateAndUploadPdf() async {
         .collection('users')
         .doc(user.uid)
         .collection('documents')
-        .where('title', isEqualTo: fileName)
+        .where('name', isEqualTo: fileName)
         .get();
 
     // Modify filename if document already exists
@@ -195,7 +195,7 @@ Future<void> _generateAndUploadPdf() async {
           .collection('users')
           .doc(user.uid)
           .collection('documents')
-          .where('title', isEqualTo: fileName)
+          .where('name', isEqualTo: fileName)
           .get();
       
       if (reCheckQuery.docs.isEmpty) {
@@ -223,7 +223,7 @@ Future<void> _generateAndUploadPdf() async {
         .doc(user.uid)
         .collection('documents')
         .add({
-      'title': fileName,
+      'name': fileName,
       'documentType': 'pdf',
       'fileUrl': downloadUrl,
       'folderId': null,

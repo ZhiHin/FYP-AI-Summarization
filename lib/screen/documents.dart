@@ -11,7 +11,15 @@ import 'package:intl/intl.dart';
 import 'package:rxdart/rxdart.dart';
 
 // Enum for document types
-enum DocumentType { pdf, document, spreadsheet, presentation, other }
+enum DocumentType {
+  pdf,
+  document,
+  spreadsheet,
+  presentation,
+  images,
+  audios,
+  other
+}
 
 // Utility function to determine document type
 DocumentType getDocumentType(String fileName) {
@@ -28,13 +36,26 @@ DocumentType getDocumentType(String fileName) {
     case '.pptx':
     case '.ppt':
       return DocumentType.presentation;
+    case '.jpg':
+    case '.jpeg':
+    case '.png':
+    case '.gif':
+    case '.bmp':
+      return DocumentType.images;
+    case '.mp3':
+    case '.wav':
+    case '.aac':
+    case '.flac':
+      return DocumentType.audios;
     default:
       return DocumentType.other;
   }
 }
 
 class DocumentsPage extends StatefulWidget {
-  const DocumentsPage({super.key});
+  final String? documentTypeFilter;
+
+  const DocumentsPage({Key? key, this.documentTypeFilter}) : super(key: key);
 
   @override
   _DocumentsPageState createState() => _DocumentsPageState();
@@ -46,56 +67,103 @@ class _DocumentsPageState extends State<DocumentsPage> {
   String? _selectedFolderId;
   String? _selectedDocumentType;
   List<String> _folderPath = [];
+  List<Map<String, dynamic>> _filteredDocuments = [];
+
+  @override
+  void initState() {
+    super.initState();
+     _selectedDocumentType = widget.documentTypeFilter;
+    _loadDocuments();
+  }
+  
+  @override
+  void didUpdateWidget(DocumentsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.documentTypeFilter != widget.documentTypeFilter) {
+      setState(() {
+        _selectedDocumentType = widget.documentTypeFilter;
+      });
+      _loadDocuments();
+    }
+  }
+
+  Future<void> _loadDocuments() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      Query query = _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('documents');
+
+      // Apply filter based on documentTypeFilter
+      if (widget.documentTypeFilter == 'documents') {
+        query = query.where('documentType', whereIn: documentTypes);
+      } else if (widget.documentTypeFilter != null) {
+        query = query.where('documentType', isEqualTo: widget.documentTypeFilter);
+      }
+
+      final documentsSnapshot = await query.get();
+      final allDocuments = documentsSnapshot.docs.map((doc) => doc.data()).toList();
+
+      setState(() {
+        _filteredDocuments = allDocuments.cast<Map<String, dynamic>>();
+        _selectedDocumentType = widget.documentTypeFilter; // Sync dropdown with filter
+      });
+    }
+  }
+
+static const List<String> documentTypes = [
+  'pdf',
+  'document',
+  'spreadsheet',
+  'presentation'
+];
 
   // Stream that combines folders and documents
   Stream<List<QuerySnapshot>> get _combinedStream {
-    final user = _auth.currentUser;
-    if (user != null) {
-      // Create folder query for current level only
-      Query<Map<String, dynamic>> folderQuery =
-          _firestore.collection('users').doc(user.uid).collection('folders');
+  final user = _auth.currentUser;
+  if (user != null) {
+    // Create folder query for current level only
+    Query<Map<String, dynamic>> folderQuery =
+        _firestore.collection('users').doc(user.uid).collection('folders');
 
-      // Only show folders that belong to the current level
-      // If _selectedFolderId is null, show only root folders (where parentFolderId is null)
-      // If _selectedFolderId has a value, show only folders where parentFolderId matches the selected folder
-      if (_selectedFolderId == null) {
-        folderQuery = folderQuery.where('parentFolderId', isNull: true);
-      } else {
-        folderQuery =
-            folderQuery.where('parentFolderId', isEqualTo: _selectedFolderId);
-      }
-
-      // Create document query
-      Query<Map<String, dynamic>> documentQuery =
-          _firestore.collection('users').doc(user.uid).collection('documents');
-      //.where('folderId', isNull: true);  // Only show documents without a folder
-      //.where('folderId', isEqualTo: _selectedFolderId);
-
-      // Filter documents by folderId
-      if (_selectedFolderId == null) {
-        // Show only documents without a folder (root level)
-        documentQuery = documentQuery.where('folderId', isNull: true);
-      } else {
-        // Show only documents in the selected folder
-        documentQuery =
-            documentQuery.where('folderId', isEqualTo: _selectedFolderId);
-      }
-
-      // Apply document type filter if selected
-      if (_selectedDocumentType != null) {
-        documentQuery = documentQuery.where('documentType',
-            isEqualTo: _selectedDocumentType);
-      }
-
-      return Rx.combineLatest2(
-        folderQuery.snapshots(),
-        documentQuery.snapshots(),
-        (QuerySnapshot a, QuerySnapshot b) => [a, b],
-      );
+    // Only show folders that belong to the current level
+    if (_selectedFolderId == null) {
+      folderQuery = folderQuery.where('parentFolderId', isNull: true);
     } else {
-      return const Stream.empty();
+      folderQuery =
+          folderQuery.where('parentFolderId', isEqualTo: _selectedFolderId);
     }
+
+    // Create document query
+    Query<Map<String, dynamic>> documentQuery =
+        _firestore.collection('users').doc(user.uid).collection('documents');
+
+    // Filter documents by folderId
+    if (_selectedFolderId == null) {
+      documentQuery = documentQuery.where('folderId', isNull: true);
+    } else {
+      documentQuery = documentQuery.where('folderId', isEqualTo: _selectedFolderId);
+    }
+
+    // Apply document type filter
+      final effectiveFilter = _selectedDocumentType ?? widget.documentTypeFilter;
+      
+      if (effectiveFilter == 'documents') {
+        documentQuery = documentQuery.where('documentType', whereIn: documentTypes);
+      } else if (effectiveFilter != null) {
+        documentQuery = documentQuery.where('documentType', isEqualTo: effectiveFilter);
+      }
+
+    return Rx.combineLatest2(
+      folderQuery.snapshots(),
+      documentQuery.snapshots(),
+      (QuerySnapshot a, QuerySnapshot b) => [a, b],
+    );
+  } else {
+    return const Stream.empty();
   }
+}
 
   // Folder path management
   Future<void> _updateFolderPath() async {
@@ -291,7 +359,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
               .doc(docId)
               .update({
             ...originalData,
-            'title': result,
+            'name': result,
             'fileUrl': newUrl,
             'storagePath': newRef.fullPath,
             'updatedAt': DateTime.now(),
@@ -460,7 +528,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
         final documentType = getDocumentType(fileName);
 
         final document = {
-          'title': fileName,
+          'name': fileName,
           'description': '',
           'size': fileSize,
           'uploadedAt': uploadDate,
@@ -803,7 +871,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                     // Documents
                     ...documents.map((doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      final fileName = data['title'] as String;
+                      final fileName = data['name'] as String;
                       final fileSize = data['size'] as int;
                       final uploadDate =
                           (data['uploadedAt'] as Timestamp).toDate();
@@ -906,6 +974,10 @@ class _DocumentsPageState extends State<DocumentsPage> {
         return Icons.table_chart;
       case 'presentation':
         return Icons.slideshow;
+      case 'image':
+        return Icons.image;
+      case 'audio':
+        return Icons.audiotrack;
       default:
         return Icons.insert_drive_file;
     }
