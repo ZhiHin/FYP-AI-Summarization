@@ -12,246 +12,79 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class ExtractScreen extends StatefulWidget {
-  final String fileUrl;
+  final List<String> fileUrls;
+  final List<String> documentNames;
 
-  const ExtractScreen({super.key, required this.fileUrl});
+  const ExtractScreen({
+    super.key,
+    required this.fileUrls,
+    required this.documentNames,
+  });
 
   @override
   State<ExtractScreen> createState() => _ExtractScreenState();
 }
 
-class _ExtractScreenState extends State<ExtractScreen> {
-  String? _extractedText;
-  String? _summary;
-  String? _displayedSummary;
+class _ExtractScreenState extends State<ExtractScreen> with TickerProviderStateMixin {
+  late TabController _tabController;
+  final Map<String, String> _extractedTexts = {};
+  final Map<String, String?> _summaries = {};
   bool _isLoading = false;
   bool _isGeneratingPdf = false;
   String _selectedSummarizationTechnique = 'extractive';
   Timer? _timer;
   int _index = 0;
+  String? _currentSummary;
+  late Map<String, String?> _displayedSummaries = {};
+
+  final Map<int, bool> _selectedDocuments = {};
+  bool _isSummarizing = false;
 
   @override
   void initState() {
     super.initState();
-    _extractText(widget.fileUrl);
+    _tabController = TabController(
+      length: widget.fileUrls.length + 1,
+      vsync: this,
+    );
+    _extractTexts();
+
+    // Initialize document selection map
+    for (int i = 0; i < widget.fileUrls.length; i++) {
+      _selectedDocuments[i] = false;
+      _summaries[i.toString()] = null;
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _tabController.dispose();
     super.dispose();
   }
 
-  // New function to generate and upload PDF
-  Future<void> _generateAndUploadPdf({
-    required String content,
-    required String contentType, // 'extracted' or 'summary'
-  }) async {
-    setState(() => _isGeneratingPdf = true);
+  Future<void> _extractTexts() async {
+    setState(() => _isLoading = true);
 
     try {
-      final pdf = pw.Document();
-
-      // Define page format and margins
-      final pageFormat = PdfPageFormat.a4;
-      const margin = 40.0;
-
-      // Define text styles
-      final textStyle = pw.TextStyle(
-        fontSize: 12,
-        lineSpacing: 1.5,
-      );
-      final titleStyle = pw.TextStyle(
-        fontSize: 16,
-        fontWeight: pw.FontWeight.bold,
-      );
-
-      // Split content function
-      List<String> _splitTextIntoPages(String text, pw.TextStyle style,
-          double pageWidth, double pageHeight) {
-        final pages = <String>[];
-        String remainingText = text.trim();
-
-        final lineHeight = style.fontSize! * 1.5;
-        final availableHeight = pageHeight - 100;
-        final linesPerPage = (availableHeight / lineHeight).floor();
-        final charsPerLine = (pageWidth / (style.fontSize! * 0.6)).floor();
-        final estimatedCharsPerPage = linesPerPage * charsPerLine;
-
-        while (remainingText.isNotEmpty) {
-          String pageText = remainingText.length > estimatedCharsPerPage
-              ? remainingText.substring(0, estimatedCharsPerPage)
-              : remainingText;
-
-          final breakStrategies = [
-            () => pageText.lastIndexOf('\n\n'),
-            () => pageText.lastIndexOf('\n'),
-            () => pageText.lastIndexOf(' ', (pageText.length * 0.75).toInt()),
-            () => pageText.lastIndexOf(' '),
-          ];
-
-          int breakPoint = -1;
-          for (var strategy in breakStrategies) {
-            breakPoint = strategy();
-            if (breakPoint != -1 && breakPoint > 0) {
-              pageText = pageText.substring(0, breakPoint);
-              break;
-            }
-          }
-
-          pageText = pageText.trimRight();
-          pages.add(pageText);
-          remainingText = remainingText.substring(pageText.length).trimLeft();
+      for (int i = 0; i < widget.fileUrls.length; i++) {
+        final url = widget.fileUrls[i];
+        if (!_extractedTexts.containsKey(url)) {
+          final extractedText = await _extractSingleText(url);
+          setState(() => _extractedTexts[url] = extractedText);
         }
-
-        return pages;
       }
-
-      // Prepare content based on type
-      final String formattedContent = content;
-
-      // Split content into pages
-      final contentPages = _splitTextIntoPages(
-          formattedContent,
-          textStyle,
-          pageFormat.availableWidth - margin * 2,
-          pageFormat.availableHeight - margin * 2);
-
-      // Generate PDF pages
-      for (int i = 0; i < contentPages.length; i++) {
-        pdf.addPage(
-          pw.Page(
-            pageFormat: pageFormat,
-            margin: pw.EdgeInsets.all(margin),
-            build: (pw.Context context) {
-              return pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  if (i == 0) ...[
-                    pw.Text(
-                        contentType == 'extracted'
-                            ? 'Extracted Document Text'
-                            : 'Document Summary',
-                        style: titleStyle),
-                    pw.SizedBox(height: 20),
-                  ],
-                  pw.Text('Page ${i + 1} of ${contentPages.length}',
-                      style: pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
-                  pw.SizedBox(height: 10),
-                  pw.Text(
-                    contentPages[i],
-                    style: textStyle,
-                    textAlign: pw.TextAlign.justify,
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-      }
-
-      // Get current user
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not authenticated');
-
-      // Generate unique filename
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      String fileName = '${contentType}_${timestamp}.pdf';
-
-      // Save PDF locally
-      final output = await getTemporaryDirectory();
-      final file = File('${output.path}/$fileName');
-      final bytes = await pdf.save();
-      await file.writeAsBytes(bytes);
-
-      // Upload to Firebase Storage
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('users/${user.uid}/documents/$fileName');
-
-      final uploadTask = storageRef.putFile(file);
-      final snapshot = await uploadTask;
-      final downloadUrl = await snapshot.ref.getDownloadURL();
-
-      // Save metadata to Firestore with content type specific fields
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('documents')
-          .add({
-        'name': fileName,
-        'documentType': 'pdf',
-        'contentType': contentType, // 'extracted' or 'summary'
-        'fileUrl': downloadUrl,
-        'folderId': null,
-        'pageCount': contentPages.length,
-        'size': bytes.length,
-        'uploadedAt': FieldValue.serverTimestamp(),
-        'summaryType':
-            contentType == 'summary' ? _selectedSummarizationTechnique : null,
-      });
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              '${contentType == 'extracted' ? 'Extracted text' : 'Summary'} PDF saved successfully (${contentPages.length} pages)'),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating PDF: $e')),
-      );
     } finally {
-      setState(() => _isGeneratingPdf = false);
+      setState(() => _isLoading = false);
     }
   }
 
-  void _startDisplayingSummary() {
-    _index = 0;
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(milliseconds: 12), (timer) {
-      if (_index < _summary!.length) {
-        setState(() {
-          _displayedSummary = _summary!.substring(0, _index) + '|';
-          _index++;
-        });
-      } else {
-        setState(() {
-          _displayedSummary = _summary;
-        });
-        _timer?.cancel();
-      }
-    });
-  }
-
-  // Copy text to clipboard and show a snackbar
-  Future<void> _copyToClipboard(String text, String label) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$label copied to clipboard'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  // Extract text from the document
-  Future<void> _extractText(String fileUrl) async {
+  Future<String> _extractSingleText(String fileUrl) async {
     if (fileUrl.isEmpty) {
-      setState(() => _extractedText = 'No file selected for text extraction');
-      return;
+      return 'No file selected for text extraction';
     }
 
     try {
-      setState(() {
-        _isLoading = true;
-        _extractedText = 'Downloading and processing file...';
-      });
-
       final fileResponse = await http.get(Uri.parse(fileUrl)).timeout(
             const Duration(minutes: 2),
             onTimeout: () => throw TimeoutException('File download timeout'),
@@ -260,8 +93,6 @@ class _ExtractScreenState extends State<ExtractScreen> {
       if (fileResponse.statusCode != 200) {
         throw Exception('Failed to download file: ${fileResponse.statusCode}');
       }
-
-      setState(() => _extractedText = 'Extracting text from PDF...');
 
       final extractRequest = http.MultipartRequest(
         'POST',
@@ -291,29 +122,37 @@ class _ExtractScreenState extends State<ExtractScreen> {
         );
       }
 
-      setState(() => _extractedText = extractedData['text']);
-    } on TimeoutException catch (e) {
-      setState(() => _extractedText = 'Error: Operation timed out - $e');
-    } on http.ClientException catch (e) {
-      setState(() => _extractedText = 'Error: Cannot connect to server - $e');
+      return extractedData['text'];
     } catch (e) {
-      setState(() => _extractedText = 'Error: ${e.toString()}');
-    } finally {
-      setState(() => _isLoading = false);
+      return 'Error: ${e.toString()}';
     }
   }
 
-  // Summarize the extracted text
-  Future<void> _summarizeText() async {
-    if (_extractedText == null || _extractedText!.isEmpty) {
-      setState(() => _summary = 'No text to summarize');
-      return;
-    }
+   Future<void> _summarizeText() async {
+  final selectedIndices = _selectedDocuments.entries
+      .where((entry) => entry.value)
+      .map((entry) => entry.key)
+      .toList();
 
-    try {
+  if (selectedIndices.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please select at least one document')),
+    );
+    return;
+  }
+
+  setState(() => _isSummarizing = true);
+
+  try {
+    for (final index in selectedIndices) {
+      final url = widget.fileUrls[index];
+      final text = _extractedTexts[url];
+      
+      if (text == null || text.isEmpty) continue;
+
       setState(() {
-        _summary = 'Generating summary...';
-        _displayedSummary = _summary;
+        _summaries[index.toString()] = 'Generating summary...';
+        _displayedSummaries[index.toString()] = '';
       });
 
       final summarizeResponse = await http
@@ -321,7 +160,7 @@ class _ExtractScreenState extends State<ExtractScreen> {
             Uri.parse('http://192.168.1.106:8000/summarize'),
             headers: {'Content-Type': 'application/json'},
             body: json.encode({
-              'text': _extractedText,
+              'text': text,
               'summary_type': _selectedSummarizationTechnique,
               'max_length': 150,
             }),
@@ -338,169 +177,468 @@ class _ExtractScreenState extends State<ExtractScreen> {
 
       final summaryData = json.decode(summarizeResponse.body);
       setState(() {
-        _summary = summaryData['summary'];
-        _displayedSummary = '';
+        _summaries[index.toString()] = summaryData['summary'];
+        // Start displaying the summary with typewriter effect
+        _currentSummary = summaryData['summary'];
+        _startDisplayingSummaryForIndex(index.toString());
       });
-      _startDisplayingSummary();
-    } on TimeoutException catch (e) {
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error generating summaries: $e')),
+    );
+  } finally {
+    setState(() => _isSummarizing = false);
+  }
+}
+
+void _startDisplayingSummaryForIndex(String index) {
+  if (_summaries[index] == null) return;
+
+  int charIndex = 0;
+  _timer?.cancel();
+  _timer = Timer.periodic(const Duration(milliseconds: 12), (timer) {
+    if (charIndex < _summaries[index]!.length) {
       setState(() {
-        _summary = 'Error: Operation timed out - $e';
-        _displayedSummary = _summary;
+        _displayedSummaries[index] = 
+            _summaries[index]!.substring(0, charIndex) + '|';
+        charIndex++;
       });
-    } on http.ClientException catch (e) {
+    } else {
       setState(() {
-        _summary = 'Error: Cannot connect to server - $e';
-        _displayedSummary = _summary;
+        _displayedSummaries[index] = _summaries[index];
       });
+      timer.cancel();
+    }
+  });
+}
+
+  Future<void> _generateAndUploadPdf({
+    required String content,
+    required String contentType,
+    String? documentName,
+  }) async {
+    setState(() => _isGeneratingPdf = true);
+
+    try {
+      final pdf = pw.Document();
+      final pageFormat = PdfPageFormat.a4;
+      const margin = 40.0;
+
+      final textStyle = pw.TextStyle(
+        fontSize: 12,
+        lineSpacing: 1.5,
+      );
+      final titleStyle = pw.TextStyle(
+        fontSize: 16,
+        fontWeight: pw.FontWeight.bold,
+      );
+
+      // Split content into pages
+      final pages = _splitTextIntoPages(
+        content,
+        textStyle,
+        pageFormat.availableWidth - margin * 2,
+        pageFormat.availableHeight - margin * 2,
+      );
+
+      for (int i = 0; i < pages.length; i++) {
+        pdf.addPage(
+          pw.Page(
+            pageFormat: pageFormat,
+            margin: pw.EdgeInsets.all(margin),
+            build: (context) => pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                if (i == 0) ...[
+                  pw.Text(
+                    documentName ??
+                        (contentType == 'extracted'
+                            ? 'Extracted Text'
+                            : 'Document Summary'),
+                    style: titleStyle,
+                  ),
+                  pw.SizedBox(height: 20),
+                ],
+                pw.Text(
+                  'Page ${i + 1} of ${pages.length}',
+                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey),
+                ),
+                pw.SizedBox(height: 10),
+                pw.Text(
+                  pages[i],
+                  style: textStyle,
+                  textAlign: pw.TextAlign.justify,
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // Remove .pdf if it exists in documentName and add it back once
+      final baseFileName = documentName?.replaceAll('.pdf', '') ?? timestamp.toString();
+      final fileName = '${contentType}_$baseFileName.pdf';
+
+      final output = await getTemporaryDirectory();
+      final file = File('${output.path}/$fileName');
+      final bytes = await pdf.save();
+      await file.writeAsBytes(bytes);
+
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('users/${user.uid}/documents/$fileName');
+
+      final uploadTask = storageRef.putFile(file);
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('documents')
+          .add({
+        'name': fileName,
+        'documentType': 'pdf',
+        'contentType': contentType,
+        'fileUrl': downloadUrl,
+        'folderId': null,
+        'pageCount': pages.length,
+        'size': bytes.length,
+        'uploadedAt': FieldValue.serverTimestamp(),
+        'summaryType':
+            contentType == 'summary' ? _selectedSummarizationTechnique : null,
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('PDF saved successfully (${pages.length} pages)'),
+        ),
+      );
     } catch (e) {
-      setState(() {
-        _summary = 'Error: ${e.toString()}';
-        _displayedSummary = _summary;
-      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error generating PDF: $e')),
+      );
     } finally {
-      setState(() => _isLoading = false);
+      setState(() => _isGeneratingPdf = false);
     }
   }
+
+  List<String> _splitTextIntoPages(
+    String text,
+    pw.TextStyle style,
+    double pageWidth,
+    double pageHeight,
+  ) {
+    final pages = <String>[];
+    String remainingText = text.trim();
+
+    final lineHeight = style.fontSize! * 1.5;
+    final availableHeight = pageHeight - 100;
+    final linesPerPage = (availableHeight / lineHeight).floor();
+    final charsPerLine = (pageWidth / (style.fontSize! * 0.6)).floor();
+    final estimatedCharsPerPage = linesPerPage * charsPerLine;
+
+    while (remainingText.isNotEmpty) {
+      String pageText = remainingText.length > estimatedCharsPerPage
+          ? remainingText.substring(0, estimatedCharsPerPage)
+          : remainingText;
+
+      final breakStrategies = [
+        () => pageText.lastIndexOf('\n\n'),
+        () => pageText.lastIndexOf('\n'),
+        () => pageText.lastIndexOf(' ', (pageText.length * 0.75).toInt()),
+        () => pageText.lastIndexOf(' '),
+      ];
+
+      int breakPoint = -1;
+      for (var strategy in breakStrategies) {
+        breakPoint = strategy();
+        if (breakPoint != -1 && breakPoint > 0) {
+          pageText = pageText.substring(0, breakPoint);
+          break;
+        }
+      }
+
+      pageText = pageText.trimRight();
+      pages.add(pageText);
+      remainingText = remainingText.substring(pageText.length).trimLeft();
+    }
+
+    return pages;
+  }
+
+  Future<void> _copyToClipboard(String text, String label) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label copied to clipboard')),
+    );
+  }
+
+  Widget _buildActionButtons(String content, String label,
+      [String? documentName]) {
+    if (content.startsWith('Error') ||
+        content.startsWith('Downloading') ||
+        content.startsWith('Generating') ||
+        content.startsWith('Processing')) {
+      return const SizedBox.shrink();
+    }
+
+    return Row(
+      children: [
+        IconButton.filled(
+          icon: const Icon(Icons.copy),
+          onPressed: () => _copyToClipboard(content, label),
+          tooltip: 'Copy $label',
+        ),
+        const SizedBox(width: 8),
+        IconButton.filled(
+          icon: const Icon(Icons.picture_as_pdf),
+          onPressed: _isGeneratingPdf
+              ? null
+              : () => _generateAndUploadPdf(
+                    content: content,
+                    contentType: label.toLowerCase(),
+                    documentName: documentName,
+                  ),
+          tooltip: 'Save $label as PDF',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContentCard(String title, String content, String label) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                _buildActionButtons(content, label, title),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                content,
+                style: const TextStyle(fontSize: 16, height: 1.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+ Widget _buildSummaryTab() {
+    return Column(
+      children: [
+        Card(
+          margin: const EdgeInsets.all(8),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Summarization Options',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Select Documents to Summarize:',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: List.generate(
+                    widget.fileUrls.length,
+                    (index) => FilterChip(
+                      label: Text(widget.documentNames[index]),
+                      selected: _selectedDocuments[index] ?? false,
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedDocuments[index] = selected;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<String>(
+                        title: const Text('Extractive'),
+                        value: 'extractive',
+                        groupValue: _selectedSummarizationTechnique,
+                        dense: true,
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedSummarizationTechnique = value!;
+                          });
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<String>(
+                        title: const Text('Abstractive'),
+                        value: 'abstractive',
+                        groupValue: _selectedSummarizationTechnique,
+                        dense: true,
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedSummarizationTechnique = value!;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: _isSummarizing ? null : _summarizeText,
+                  icon: _isSummarizing
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.summarize),
+                  label: Text(_isSummarizing ? 'Generating...' : 'Generate Summaries'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.all(16),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+        child: ListView.builder(
+          padding: const EdgeInsets.all(8),
+          itemCount: widget.fileUrls.length,
+          itemBuilder: (context, index) {
+            final summary = _summaries[index.toString()];
+            if (summary == null) return const SizedBox.shrink();
+            
+            final displayedSummary = _displayedSummaries[index.toString()] ?? summary;
+            
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Summary of ${widget.documentNames[index]}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        _buildActionButtons(summary, 'Summary', widget.documentNames[index]),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      displayedSummary,
+                      style: const TextStyle(fontSize: 16, height: 1.5),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    ],
+  );
+}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Extract & Summarize Text'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            if (_isLoading) const CircularProgressIndicator(),
-            if (_extractedText != null)
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Extracted Text:',
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                          Row(
-                            children: [
-                              if (_extractedText != null &&
-                                  !_extractedText!.startsWith('Error') &&
-                                  !_extractedText!
-                                      .startsWith('Downloading')) ...[
-                                IconButton(
-                                  icon: const Icon(Icons.copy),
-                                  onPressed: () => _copyToClipboard(
-                                      _extractedText!, 'Extracted text'),
-                                  tooltip: 'Copy extracted text',
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.picture_as_pdf),
-                                  onPressed: _isGeneratingPdf
-                                      ? null
-                                      : () => _generateAndUploadPdf(
-                                            content: _extractedText!,
-                                            contentType: 'extracted',
-                                          ),
-                                ),
-                              ]
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        _extractedText!,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Radio<String>(
-                            value: 'extractive',
-                            groupValue: _selectedSummarizationTechnique,
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedSummarizationTechnique = value!;
-                              });
-                            },
-                          ),
-                          const Text('Extractive'),
-                          Radio<String>(
-                            value: 'abstractive',
-                            groupValue: _selectedSummarizationTechnique,
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedSummarizationTechnique = value!;
-                              });
-                            },
-                          ),
-                          const Text('Abstractive'),
-                        ],
-                      ),
-                      ElevatedButton(
-                        onPressed: _summarizeText,
-                        child: const Text('Summarize Text'),
-                      ),
-                      if (_displayedSummary != null &&
-                          _displayedSummary!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Summary:',
-                                    style:
-                                        Theme.of(context).textTheme.titleLarge,
-                                  ),
-                                  Row(
-                                    children: [
-                                      if (!_displayedSummary!
-                                              .startsWith('Error') &&
-                                          !_displayedSummary!
-                                              .startsWith('Generating')) ...[
-                                        IconButton(
-                                          icon: const Icon(Icons.copy),
-                                          onPressed: () => _copyToClipboard(
-                                              _summary!, 'Summary'),
-                                          tooltip: 'Copy summary',
-                                        ),
-                                        IconButton(
-                                          icon:
-                                              const Icon(Icons.picture_as_pdf),
-                                          onPressed: _isGeneratingPdf
-                                              ? null
-                                              : () => _generateAndUploadPdf(
-                                                    content: _summary!,
-                                                    contentType: 'summary',
-                                                  ),
-                                        ),
-                                      ]
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              Text(
-                                _displayedSummary!,
-                                style: const TextStyle(fontSize: 16),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            ...List.generate(
+              widget.fileUrls.length,
+              (index) => Tab(
+                icon: const Icon(Icons.text_fields),
+                text: 'Document ${index + 1}',
               ),
+            ),
+            const Tab(
+              icon: Icon(Icons.summarize),
+              text: 'Summary',
+            ),
           ],
         ),
       ),
+      body: _isLoading
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Processing documents...'),
+                ],
+              ),
+            )
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                ...widget.fileUrls.map((url) {
+                  final index = widget.fileUrls.indexOf(url);
+                  final documentName = widget.documentNames[index];
+                  return _buildContentCard(
+                    documentName,
+                    _extractedTexts[url] ?? 'No text extracted yet',
+                    'Extracted text',
+                  );
+                }),
+                _buildSummaryTab(),
+              ],
+            ),
     );
   }
 }

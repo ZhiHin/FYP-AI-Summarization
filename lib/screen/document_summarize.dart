@@ -20,6 +20,9 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
   final _auth = FirebaseAuth.instance;
   String? _selectedFileUrl;
   bool _isLoading = false;
+  bool _isSelectionMode = false;
+  final Set<String> _selectedDocuments = {};
+  final Map<String, String> _documentNames = {};
 
   Stream<QuerySnapshot> get _documentStream {
     final user = _auth.currentUser;
@@ -91,125 +94,6 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
     }
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Document Summarize'),
-      ),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              if (_selectedFileUrl != null)
-                SizedBox(
-                  height: MediaQuery.of(context).size.height * 0.4,
-                  child: SfPdfViewer.network(_selectedFileUrl!),
-                ),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: _documentStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return const Center(
-                        child: Text('Something went wrong'),
-                      );
-                    }
-
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
-                    }
-
-                    final documents = snapshot.data?.docs ?? [];
-                    if (documents.isEmpty) {
-                      return const Center(
-                        child: Text('No documents uploaded yet'),
-                      );
-                    }
-
-                    return ListView.builder(
-                      itemCount: documents.length,
-                      itemBuilder: (context, index) {
-                        final document = documents[index];
-                        final data = document.data() as Map<String, dynamic>;
-                        final fileName = data['name'] as String;
-                        final uploadDate =
-                            (data['uploadedAt'] as Timestamp?)?.toDate() ??
-                                DateTime.now();
-                        final fileSize = (data['size'] as num).toDouble();
-                        final fileUrl = data['fileUrl'] as String;
-                        final documentId = document.id;
-
-                        return ListTile(
-                          title: Text(fileName),
-                          subtitle: Text(
-                            'Uploaded on: ${uploadDate.toString().split('.')[0]}\n'
-                            'Size: ${(fileSize / 1024).toStringAsFixed(2)} KB',
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () => _deleteDocument(
-                                  documentId,
-                                  fileUrl,
-                                  fileName,
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right),
-                            ],
-                          ),
-                          selected: _selectedFileUrl == fileUrl,
-                          onTap: () {
-                            setState(() => _selectedFileUrl = fileUrl);
-                          },
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              if (_selectedFileUrl != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      // Navigate to ExtractScreen when a document is selected
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              ExtractScreen(fileUrl: _selectedFileUrl!),
-                        ),
-                      );
-                    },
-                    child: const Text('Extract Text'),
-                  ),
-                ),
-            ],
-          ),
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(),
-            ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pickAndUploadFile,
-        child: const Icon(Icons.upload_file),
-      ),
-    );
-  }
-
   Future<void> _deleteDocument(
       String documentId, String fileUrl, String fileName) async {
     final user = _auth.currentUser;
@@ -249,5 +133,184 @@ class _DocumentSummarizePageState extends State<DocumentSummarizePage> {
       // If it fails (file does not exist), return the original file name
       return fileName;
     }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Widget _buildDocumentList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _documentStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Center(child: Text('Something went wrong'));
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final documents = snapshot.data?.docs ?? [];
+        if (documents.isEmpty) {
+          return const Center(child: Text('No documents uploaded yet'));
+        }
+
+        return ListView.builder(
+          itemCount: documents.length,
+          itemBuilder: (context, index) {
+            final document = documents[index];
+            final data = document.data() as Map<String, dynamic>;
+            final fileName = data['name'] as String;
+            final uploadDate =
+                (data['uploadedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+            final fileSize = (data['size'] as num).toDouble();
+            final fileUrl = data['fileUrl'] as String;
+            final documentId = document.id;
+
+            // Store document name for later use
+            _documentNames[fileUrl] = fileName;
+
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: ListTile(
+                leading: Checkbox(
+                  value: _selectedDocuments.contains(fileUrl),
+                  onChanged: (bool? value) {
+                    setState(() {
+                      if (value == true) {
+                        _selectedDocuments.add(fileUrl);
+                      } else {
+                        _selectedDocuments.remove(fileUrl);
+                      }
+                    });
+                  },
+                ),
+                title: Text(
+                  fileName,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  'Uploaded on: ${uploadDate.toString().split('.')[0]}\n'
+                  'Size: ${(fileSize / 1024).toStringAsFixed(2)} KB',
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: () =>
+                      _deleteDocument(documentId, fileUrl, fileName),
+                ),
+                onTap: () {
+                  setState(() {
+                    if (_selectedDocuments.contains(fileUrl)) {
+                      _selectedDocuments.remove(fileUrl);
+                    } else {
+                      _selectedDocuments.add(fileUrl);
+                    }
+                  });
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPreviewSection() {
+    if (_selectedDocuments.isEmpty) {
+      return const Center(
+        child: Text('Select documents to preview and extract text'),
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: _selectedDocuments.length == 1
+              ? SfPdfViewer.network(_selectedDocuments.first)
+              : Center(
+                  child: Text(
+                    '${_selectedDocuments.length} documents selected',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ExtractScreen(
+                    fileUrls: _selectedDocuments.toList(),
+                    documentNames: _selectedDocuments
+                        .map((url) => _documentNames[url] ?? 'Unnamed Document')
+                        .toList(),
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.text_snippet),
+            label: Text(
+              'Extract Text (${_selectedDocuments.length} selected)',
+              style: const TextStyle(fontSize: 16),
+            ),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Document Summarize'),
+        actions: [
+          if (_selectedDocuments.isNotEmpty)
+            TextButton.icon(
+              icon: const Icon(Icons.clear_all),
+              label: const Text('Clear Selection'),
+              onPressed: () {
+                setState(() => _selectedDocuments.clear());
+              },
+            ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Column(
+            children: [
+              // Preview Section (Top)
+              Expanded(
+                flex: 3,
+                child: _buildPreviewSection(),
+              ),
+              // Horizontal Divider
+              const Divider(height: 1),
+              // Document List (Bottom)
+              Expanded(
+                flex: 2,
+                child: _buildDocumentList(),
+              ),
+            ],
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black45,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _pickAndUploadFile,
+        child: const Icon(Icons.upload_file),
+      ),
+    );
   }
 }
