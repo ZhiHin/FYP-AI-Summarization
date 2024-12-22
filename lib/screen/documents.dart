@@ -72,10 +72,10 @@ class _DocumentsPageState extends State<DocumentsPage> {
   @override
   void initState() {
     super.initState();
-     _selectedDocumentType = widget.documentTypeFilter;
+    _selectedDocumentType = widget.documentTypeFilter;
     _loadDocuments();
   }
-  
+
   @override
   void didUpdateWidget(DocumentsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -90,80 +90,97 @@ class _DocumentsPageState extends State<DocumentsPage> {
   Future<void> _loadDocuments() async {
     final user = _auth.currentUser;
     if (user != null) {
-      Query query = _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('documents');
+      Query query =
+          _firestore.collection('users').doc(user.uid).collection('documents');
+
+    // Debug print
+    print('Document type filter: ${widget.documentTypeFilter}');
 
       // Apply filter based on documentTypeFilter
       if (widget.documentTypeFilter == 'documents') {
         query = query.where('documentType', whereIn: documentTypes);
       } else if (widget.documentTypeFilter != null) {
-        query = query.where('documentType', isEqualTo: widget.documentTypeFilter);
+        query =
+            query.where('documentType', isEqualTo: widget.documentTypeFilter);
       }
 
       final documentsSnapshot = await query.get();
-      final allDocuments = documentsSnapshot.docs.map((doc) => doc.data()).toList();
+      final allDocuments =
+          documentsSnapshot.docs.map((doc) => doc.data()).toList();
 
       setState(() {
         _filteredDocuments = allDocuments.cast<Map<String, dynamic>>();
-        _selectedDocumentType = widget.documentTypeFilter; // Sync dropdown with filter
+        _selectedDocumentType =
+            widget.documentTypeFilter; // Sync dropdown with filter
       });
     }
   }
 
-static const List<String> documentTypes = [
-  'pdf',
-  'document',
-  'spreadsheet',
-  'presentation'
-];
+  static const List<String> documentTypes = [
+    'pdf',
+    'document',
+    'spreadsheet',
+    'presentation',
+    'images',
+    'audios',
+    'other'
+  ];
 
   // Stream that combines folders and documents
   Stream<List<QuerySnapshot>> get _combinedStream {
-  final user = _auth.currentUser;
-  if (user != null) {
-    // Create folder query for current level only
-    Query<Map<String, dynamic>> folderQuery =
-        _firestore.collection('users').doc(user.uid).collection('folders');
+    final user = _auth.currentUser;
+    if (user != null) {
+      // Create folder query for current level only
+      Query<Map<String, dynamic>> folderQuery =
+          _firestore.collection('users').doc(user.uid).collection('folders');
 
-    // Only show folders that belong to the current level
-    if (_selectedFolderId == null) {
-      folderQuery = folderQuery.where('parentFolderId', isNull: true);
-    } else {
-      folderQuery =
-          folderQuery.where('parentFolderId', isEqualTo: _selectedFolderId);
-    }
-
-    // Create document query
-    Query<Map<String, dynamic>> documentQuery =
-        _firestore.collection('users').doc(user.uid).collection('documents');
-
-    // Filter documents by folderId
-    if (_selectedFolderId == null) {
-      documentQuery = documentQuery.where('folderId', isNull: true);
-    } else {
-      documentQuery = documentQuery.where('folderId', isEqualTo: _selectedFolderId);
-    }
-
-    // Apply document type filter
-      final effectiveFilter = _selectedDocumentType ?? widget.documentTypeFilter;
-      
-      if (effectiveFilter == 'documents') {
-        documentQuery = documentQuery.where('documentType', whereIn: documentTypes);
-      } else if (effectiveFilter != null) {
-        documentQuery = documentQuery.where('documentType', isEqualTo: effectiveFilter);
+      // Only show folders that belong to the current level
+      if (_selectedFolderId == null) {
+        folderQuery = folderQuery.where('parentFolderId', isNull: true);
+      } else {
+        folderQuery =
+            folderQuery.where('parentFolderId', isEqualTo: _selectedFolderId);
       }
 
-    return Rx.combineLatest2(
-      folderQuery.snapshots(),
-      documentQuery.snapshots(),
-      (QuerySnapshot a, QuerySnapshot b) => [a, b],
-    );
-  } else {
-    return const Stream.empty();
+      // Create document query
+      Query<Map<String, dynamic>> documentQuery =
+          _firestore.collection('users').doc(user.uid).collection('documents');
+
+      // Filter documents by folderId
+      if (_selectedFolderId == null) {
+        documentQuery = documentQuery.where('folderId', isNull: true);
+      } else {
+        documentQuery =
+            documentQuery.where('folderId', isEqualTo: _selectedFolderId);
+      }
+
+      // Apply document type filter
+      final effectiveFilter =
+          _selectedDocumentType ?? widget.documentTypeFilter;
+
+      if (effectiveFilter == 'documents') {
+        documentQuery = documentQuery.where('documentType',
+            whereIn: ['pdf', 'document', 'spreadsheet', 'presentation']);
+      } else if (effectiveFilter == 'images') {
+        documentQuery =
+            documentQuery.where('documentType', isEqualTo: 'images');
+      } else if (effectiveFilter == 'audios') {
+        documentQuery =
+            documentQuery.where('documentType', isEqualTo: 'audios');
+      } else if (effectiveFilter != null && effectiveFilter != 'all') {
+        documentQuery = documentQuery.where('documentType',
+            isEqualTo: effectiveFilter.toLowerCase());
+      }
+
+      return Rx.combineLatest2(
+        folderQuery.snapshots(),
+        documentQuery.snapshots(),
+        (QuerySnapshot a, QuerySnapshot b) => [a, b],
+      );
+    } else {
+      return const Stream.empty();
+    }
   }
-}
 
   // Folder path management
   Future<void> _updateFolderPath() async {
@@ -965,7 +982,7 @@ static const List<String> documentTypes = [
   }
 
   IconData _getDocumentTypeIcon(String documentType) {
-    switch (documentType) {
+    switch (documentType.toLowerCase()) {
       case 'pdf':
         return Icons.picture_as_pdf;
       case 'document':
