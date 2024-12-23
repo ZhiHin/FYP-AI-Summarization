@@ -59,7 +59,7 @@ dependencies:
   http: ^1.2.2 
   open_file: any
   blur_detection: ^1.0.0
-
+  diff_match_patch: ^0.4.1
 
 dev_dependencies:
   flutter_test:

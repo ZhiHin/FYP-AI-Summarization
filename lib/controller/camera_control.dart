@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:ai_summarization/model/image_model.dart';
 import 'package:ai_summarization/screen/utils.dart';
 import 'package:blur_detection/blur_detection.dart';
 import 'package:flutter/material.dart';
