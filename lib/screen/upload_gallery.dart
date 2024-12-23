@@ -1,3 +1,4 @@
+import 'package:ai_summarization/model/image_model.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
@@ -15,7 +16,7 @@ class _UploadGalleryState extends State<UploadGallery> {
   List<File> _images = [];
   List<File> _selectedImages = [];
   bool _selectionMode = false;
-
+  ImageModel _imageModel = ImageModel();
   @override
   void initState() {
     super.initState();
@@ -81,39 +82,12 @@ class _UploadGalleryState extends State<UploadGallery> {
 
     for (File image in uploadedImages) {
       try {
-        User? user = FirebaseAuth.instance.currentUser;
-        if (user == null) {
-          print('User not logged in');
-          return;
-        }
-        final String fileName = path.basename(image.path);
-        String userId = user.uid;
-        Reference storageRef =
-            FirebaseStorage.instance.ref('users/$userId/uploads/$fileName');
-
-        // Upload the file to Firebase Storage
-        final UploadTask uploadTask = storageRef.putFile(image);
-        await uploadTask;
-
-        TaskSnapshot taskSnapshot = await uploadTask;
-
-        // Get the download URL of the uploaded file
-        String imageUrl = await taskSnapshot.ref.getDownloadURL();
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .collection('images')
-            .add({
-          'imageUrl': imageUrl,
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-      } on FirebaseException catch (e) {
-        print('Error uploading image to Firebase: $e');
+        _imageModel.uploadImageToFirebase(context, XFile(image.path));
       } catch (e) {
-        print('Unexpected error: $e');
+        print('Error uploading image: $e');
       }
+      print('All selected images uploaded');
     }
-    print('All selected images uploaded');
   }
 
   @override

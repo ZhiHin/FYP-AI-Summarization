@@ -1,8 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:ai_summarization/model/prompt_model.dart';
+import 'package:ai_summarization/screen/utils.dart';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 class DetectTextControl {
+  final PromptModel _promptModel = PromptModel();
   String? localIp;
 
   Future<String?> getLocalIp() async {
@@ -31,5 +35,8 @@ class DetectTextControl {
     }
   }
 
-  Future<void> saveOriginal() async {}
+  Future<void> saveOriginal(List<String> imageUrls, List<String> promptTexts,
+      String promptName, BuildContext context) async {
+    await _promptModel.savePromptToFirebase(imageUrls, promptTexts, promptName);
+  }
 }

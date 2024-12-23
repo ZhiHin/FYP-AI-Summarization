@@ -1,4 +1,5 @@
 import 'package:ai_summarization/screen/gallery_tool_view.dart';
+import 'package:ai_summarization/screen/prompt_list_view.dart';
 import 'package:flutter/material.dart';
 import 'audioProcess.dart';
 import 'document_converter_page.dart';
@@ -37,7 +38,6 @@ class ToolsPage extends StatelessWidget {
                   ),
                 );
               },
-
             ),
             ListTile(
               title: const Text("Image Resizer"),
@@ -85,6 +85,17 @@ class ToolsPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => GalleryView(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              title: const Text("Prompt History"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PromptListView(),
                   ),
                 );
               },
