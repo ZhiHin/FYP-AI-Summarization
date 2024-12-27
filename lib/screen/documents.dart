@@ -11,15 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:rxdart/rxdart.dart';
 
 // Enum for document types
-enum DocumentType {
-  pdf,
-  document,
-  spreadsheet,
-  presentation,
-  images,
-  audios,
-  other
-}
+enum DocumentType { pdf, word, images, audios }
 
 // Utility function to determine document type
 DocumentType getDocumentType(String fileName) {
@@ -29,13 +21,7 @@ DocumentType getDocumentType(String fileName) {
       return DocumentType.pdf;
     case '.docx':
     case '.doc':
-      return DocumentType.document;
-    case '.xlsx':
-    case '.xls':
-      return DocumentType.spreadsheet;
-    case '.pptx':
-    case '.ppt':
-      return DocumentType.presentation;
+      return DocumentType.word;
     case '.jpg':
     case '.jpeg':
     case '.png':
@@ -48,7 +34,7 @@ DocumentType getDocumentType(String fileName) {
     case '.flac':
       return DocumentType.audios;
     default:
-      return DocumentType.other;
+      return DocumentType.pdf;
   }
 }
 
@@ -72,7 +58,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
   @override
   void initState() {
     super.initState();
-    _selectedDocumentType = widget.documentTypeFilter;
+    _selectedDocumentType = null;
     _loadDocuments();
   }
 
@@ -87,54 +73,58 @@ class _DocumentsPageState extends State<DocumentsPage> {
     }
   }
 
+  static const List<String> documentTypes = ['pdf', 'word', 'images', 'audios'];
+
   Future<void> _loadDocuments() async {
     final user = _auth.currentUser;
     if (user != null) {
-      Query query =
-          _firestore.collection('users').doc(user.uid).collection('documents');
+      // Create queries for all collections
+      List<QuerySnapshot> snapshots = await Future.wait([
+        _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('documents')
+            .get(),
+        _firestore.collection('users').doc(user.uid).collection('images').get(),
+        _firestore.collection('users').doc(user.uid).collection('audios').get(),
+      ]);
 
-    // Debug print
-    print('Document type filter: ${widget.documentTypeFilter}');
+      // Combine all documents
+      List<Map<String, dynamic>> allDocuments = [];
 
-      // Apply filter based on documentTypeFilter
-      if (widget.documentTypeFilter == 'documents') {
-        query = query.where('documentType', whereIn: documentTypes);
-      } else if (widget.documentTypeFilter != null) {
-        query =
-            query.where('documentType', isEqualTo: widget.documentTypeFilter);
+      // Add documents from each collection
+      for (var snapshot in snapshots) {
+        allDocuments.addAll(snapshot.docs.map((doc) => {
+              ...doc.data() as Map<String, dynamic>,
+              'id': doc.id,
+              'collection':
+                  _getCollectionForDoc(doc.data() as Map<String, dynamic>),
+            }));
       }
 
-      final documentsSnapshot = await query.get();
-      final allDocuments =
-          documentsSnapshot.docs.map((doc) => doc.data()).toList();
-
       setState(() {
-        _filteredDocuments = allDocuments.cast<Map<String, dynamic>>();
-        _selectedDocumentType =
-            widget.documentTypeFilter; // Sync dropdown with filter
+        _filteredDocuments = allDocuments;
+        _selectedDocumentType = widget.documentTypeFilter;
       });
     }
   }
 
-  static const List<String> documentTypes = [
-    'pdf',
-    'document',
-    'spreadsheet',
-    'presentation',
-    'images',
-    'audios',
-    'other'
-  ];
+// Helper method to determine collection
+  String _getCollectionForDoc(Map<String, dynamic> data) {
+    final docType = data['documentType']?.toString().toLowerCase();
+    if (docType == 'images') return 'images';
+    if (docType == 'audios') return 'audios';
+    return 'documents';
+  }
 
-  // Stream that combines folders and documents
+// Modify _combinedStream to include all collections
   Stream<List<QuerySnapshot>> get _combinedStream {
     final user = _auth.currentUser;
     if (user != null) {
-      // Create folder query for current level only
+      // Create folder query
       Query<Map<String, dynamic>> folderQuery =
           _firestore.collection('users').doc(user.uid).collection('folders');
 
-      // Only show folders that belong to the current level
       if (_selectedFolderId == null) {
         folderQuery = folderQuery.where('parentFolderId', isNull: true);
       } else {
@@ -142,43 +132,78 @@ class _DocumentsPageState extends State<DocumentsPage> {
             folderQuery.where('parentFolderId', isEqualTo: _selectedFolderId);
       }
 
-      // Create document query
-      Query<Map<String, dynamic>> documentQuery =
-          _firestore.collection('users').doc(user.uid).collection('documents');
+      // Create queries for all document types
+      List<Stream<QuerySnapshot>> documentStreams = [];
 
-      // Filter documents by folderId
-      if (_selectedFolderId == null) {
-        documentQuery = documentQuery.where('folderId', isNull: true);
-      } else {
-        documentQuery =
-            documentQuery.where('folderId', isEqualTo: _selectedFolderId);
-      }
-
-      // Apply document type filter
+      // Get the effective filter
       final effectiveFilter =
           _selectedDocumentType ?? widget.documentTypeFilter;
 
-      if (effectiveFilter == 'documents') {
-        documentQuery = documentQuery.where('documentType',
-            whereIn: ['pdf', 'document', 'spreadsheet', 'presentation']);
-      } else if (effectiveFilter == 'images') {
-        documentQuery =
-            documentQuery.where('documentType', isEqualTo: 'images');
-      } else if (effectiveFilter == 'audios') {
-        documentQuery =
-            documentQuery.where('documentType', isEqualTo: 'audios');
-      } else if (effectiveFilter != null && effectiveFilter != 'all') {
-        documentQuery = documentQuery.where('documentType',
-            isEqualTo: effectiveFilter.toLowerCase());
+      // Create base queries
+      final docsQuery =
+          _firestore.collection('users').doc(user.uid).collection('documents');
+
+      final imagesQuery =
+          _firestore.collection('users').doc(user.uid).collection('images');
+
+      final audiosQuery =
+          _firestore.collection('users').doc(user.uid).collection('audios');
+
+      // Apply folder filter to all queries
+      final filteredDocsQuery = _applyFolderFilter(docsQuery);
+      final filteredImagesQuery = _applyFolderFilter(imagesQuery);
+      final filteredAudiosQuery = _applyFolderFilter(audiosQuery);
+
+      if (effectiveFilter == null || effectiveFilter == 'all') {
+        // If no filter or 'all' is selected, add streams for all document types
+        documentStreams.addAll([
+          filteredDocsQuery.snapshots(),
+          filteredImagesQuery.snapshots(),
+          filteredAudiosQuery.snapshots(),
+        ]);
+      } else {
+        // Apply specific filter
+        switch (effectiveFilter.toLowerCase()) {
+          case 'documents':
+            documentStreams.add(filteredDocsQuery
+                .where('documentType', whereIn: ['pdf', 'word']).snapshots());
+            break;
+          case 'pdf':
+            documentStreams.add(filteredDocsQuery
+                .where('documentType', isEqualTo: 'pdf')
+                .snapshots());
+            break;
+          case 'word':
+            documentStreams.add(filteredDocsQuery
+                .where('documentType', isEqualTo: 'word')
+                .snapshots());
+            break;
+          case 'images':
+            documentStreams.add(filteredImagesQuery.snapshots());
+            break;
+          case 'audios':
+            documentStreams.add(filteredAudiosQuery.snapshots());
+            break;
+        }
       }
 
+      // Combine folder query with document streams
       return Rx.combineLatest2(
         folderQuery.snapshots(),
-        documentQuery.snapshots(),
-        (QuerySnapshot a, QuerySnapshot b) => [a, b],
+        Rx.combineLatestList(documentStreams),
+        (QuerySnapshot folders, List<QuerySnapshot> docs) => [folders, ...docs],
       );
+    }
+    return const Stream.empty();
+  }
+
+// Helper method to apply folder filter
+  Query<Map<String, dynamic>> _applyFolderFilter(
+      Query<Map<String, dynamic>> query) {
+    if (_selectedFolderId == null) {
+      return query.where('folderId', isNull: true);
     } else {
-      return const Stream.empty();
+      return query.where('folderId', isEqualTo: _selectedFolderId);
     }
   }
 
@@ -399,7 +424,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
 
   // Method to move document to folder
   Future<void> _moveDocumentToFolder(
-      String documentId, String? currentFolderId) async {
+      String documentId, String? currentFolderId, String collectionName) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -422,7 +447,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                 leading: const Icon(Icons.folder_open),
                 title: const Text('Root Folder'),
                 onTap: () {
-                  _updateDocumentFolder(documentId, null);
+                  _updateDocumentFolder(documentId, null, collectionName);
                   Navigator.pop(context);
                 },
               ),
@@ -430,7 +455,8 @@ class _DocumentsPageState extends State<DocumentsPage> {
                     leading: const Icon(Icons.folder),
                     title: Text(folder['name']),
                     onTap: () {
-                      _updateDocumentFolder(documentId, folder.id);
+                      _updateDocumentFolder(
+                          documentId, folder.id, collectionName);
                       Navigator.pop(context);
                     },
                   )),
@@ -442,7 +468,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
   }
 
   Future<void> _updateDocumentFolder(
-      String documentId, String? folderId) async {
+      String documentId, String? folderId, String collectionName) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -450,7 +476,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
       await _firestore
           .collection('users')
           .doc(user.uid)
-          .collection('documents')
+          .collection(collectionName)
           .doc(documentId)
           .update({'folderId': folderId});
 
@@ -465,6 +491,17 @@ class _DocumentsPageState extends State<DocumentsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error moving document: $e')),
       );
+    }
+  }
+
+  String _getCollectionName(DocumentType documentType) {
+    switch (documentType) {
+      case DocumentType.images:
+        return 'images';
+      case DocumentType.audios:
+        return 'audios';
+      default:
+        return 'documents';
     }
   }
 
@@ -488,11 +525,15 @@ class _DocumentsPageState extends State<DocumentsPage> {
       final fileSize = await file.length();
       final uploadDate = DateTime.now();
 
-      final storageRef =
-          FirebaseStorage.instance.ref().child('users/$userId/documents/');
-
       // Generate unique filename
       String fileName = originalFileName;
+      final documentType = getDocumentType(fileName);
+      final collectionName = _getCollectionName(documentType);
+
+      final storageRef = FirebaseStorage.instance.ref().child(
+          'users/$userId/$collectionName/' // Changed this line to use collection name
+          );
+
       int count = 1;
       while (await _fileExists(storageRef, fileName)) {
         fileName =
@@ -542,8 +583,6 @@ class _DocumentsPageState extends State<DocumentsPage> {
           pageCount = await _getPdfPageCount(filePath);
         }
 
-        final documentType = getDocumentType(fileName);
-
         final document = {
           'name': fileName,
           'description': '',
@@ -558,7 +597,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
         await _firestore
             .collection('users')
             .doc(userId)
-            .collection('documents')
+            .collection(collectionName)
             .add(document);
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -593,8 +632,8 @@ class _DocumentsPageState extends State<DocumentsPage> {
   }
 
   // Document deletion method
-  Future<void> _deleteDocument(
-      String documentId, String fileUrl, String fileName) async {
+  Future<void> _deleteDocument(String documentId, String fileUrl,
+      String fileName, String collectionName) async {
     try {
       final user = _auth.currentUser;
       if (user == null) return;
@@ -628,7 +667,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
       await _firestore
           .collection('users')
           .doc(user.uid)
-          .collection('documents')
+          .collection(collectionName)
           .doc(documentId)
           .delete();
 
@@ -656,15 +695,32 @@ class _DocumentsPageState extends State<DocumentsPage> {
           .where('parentFolderId', isEqualTo: folderId)
           .get();
 
-      // Check for documents in folder
-      final documents = await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('documents')
-          .where('folderId', isEqualTo: folderId)
-          .get();
+      // Check for documents in all collections
+      final documentsInFolder = await Future.wait([
+        _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('documents')
+            .where('folderId', isEqualTo: folderId)
+            .get(),
+        _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('images')
+            .where('folderId', isEqualTo: folderId)
+            .get(),
+        _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('audios')
+            .where('folderId', isEqualTo: folderId)
+            .get(),
+      ]);
 
-      if (subfolders.docs.isNotEmpty || documents.docs.isNotEmpty) {
+      final hasDocuments =
+          documentsInFolder.any((snapshot) => snapshot.docs.isNotEmpty);
+
+      if (subfolders.docs.isNotEmpty || hasDocuments) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cannot delete non-empty folder')),
         );
@@ -748,7 +804,8 @@ class _DocumentsPageState extends State<DocumentsPage> {
             icon: const Icon(Icons.filter_list),
             onSelected: (String value) {
               setState(() {
-                _selectedDocumentType = value == 'all' ? null : value;
+                _selectedDocumentType =
+                    value == 'all' ? null : value.toLowerCase();
               });
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -756,8 +813,9 @@ class _DocumentsPageState extends State<DocumentsPage> {
                 value: 'all',
                 child: Text('All Documents'),
               ),
+              const PopupMenuDivider(),
               ...DocumentType.values.map((type) => PopupMenuItem<String>(
-                    value: type.toString().split('.').last,
+                    value: type.toString().split('.').last.toLowerCase(),
                     child: Text(type.toString().split('.').last),
                   )),
             ],
@@ -838,9 +896,13 @@ class _DocumentsPageState extends State<DocumentsPage> {
                 }
 
                 final folders = snapshot.data![0].docs;
-                final documents = snapshot.data![1].docs;
+                // Combine documents from all collections (starting from index 1)
+                List<QueryDocumentSnapshot> allDocuments = [];
+                for (int i = 1; i < snapshot.data!.length; i++) {
+                  allDocuments.addAll(snapshot.data![i].docs);
+                }
 
-                if (folders.isEmpty && documents.isEmpty) {
+                if (folders.isEmpty && allDocuments.isEmpty) {
                   return const Center(
                     child: Text('No folders or documents found'),
                   );
@@ -886,7 +948,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                         )),
 
                     // Documents
-                    ...documents.map((doc) {
+                    ...allDocuments.map((doc) {
                       final data = doc.data() as Map<String, dynamic>;
                       final fileName = data['name'] as String;
                       final fileSize = data['size'] as int;
@@ -899,9 +961,6 @@ class _DocumentsPageState extends State<DocumentsPage> {
                       return ListTile(
                         leading: Icon(_getDocumentTypeIcon(documentType)),
                         title: Text(fileName),
-                        // subtitle: Text(
-                        //   '${_formatFileSize(fileSize)} • ${DateFormat.yMMMd().format(uploadDate)}',
-                        // ),
                         subtitle: Text(
                           '${_formatFileSize(fileSize)} • ${DateFormat.yMMMd().format(uploadDate)}${pageCount > 0 ? ' • $pageCount pages' : ''}',
                         ),
@@ -944,11 +1003,17 @@ class _DocumentsPageState extends State<DocumentsPage> {
                                     doc.id, fileName, data['fileUrl']);
                                 break;
                               case 'move':
-                                _moveDocumentToFolder(doc.id, data['folderId']);
+                                _moveDocumentToFolder(doc.id, data['folderId'],
+                                    _getCollectionForDoc(data));
                                 break;
                               case 'delete':
                                 _deleteDocument(
-                                    doc.id, data['fileUrl'], fileName);
+                                    doc.id,
+                                    data['fileUrl'],
+                                    fileName,
+                                    _getCollectionForDoc(
+                                        data) // Pass the collection name
+                                    );
                                 break;
                             }
                           },
