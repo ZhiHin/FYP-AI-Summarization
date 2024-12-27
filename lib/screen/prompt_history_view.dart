@@ -22,6 +22,11 @@ class _PromptHistoryViewState extends State<PromptHistoryView> {
     _retrievePromptHistory();
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   Future<void> _retrievePromptHistory() async {
     List<Map<String, dynamic>> history =
         await _promptModel.fetchPromptHistory(widget.promptId);
@@ -53,8 +58,8 @@ class _PromptHistoryViewState extends State<PromptHistoryView> {
                               ? 'Current'
                               : 'Updated: ${historyItem['timestamp']?.toDate() ?? 'Unknown'}',
                         ),
-                        onTap: () {
-                          Navigator.push(
+                        onTap: () async {
+                          final updatedTexts = await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => PromptHistoryDetailView(
@@ -65,6 +70,10 @@ class _PromptHistoryViewState extends State<PromptHistoryView> {
                               ),
                             ),
                           );
+                          if (updatedTexts != null) {
+                            Navigator.pop(context,
+                                updatedTexts); // Return to PromptEditView with new text
+                          }
                         },
                       ),
                     );

@@ -1,16 +1,20 @@
+import 'package:ai_summarization/controller/prompt_history_control.dart';
+import 'package:ai_summarization/screen/utils.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:diff_match_patch/diff_match_patch.dart';
+import 'package:intl/intl.dart';
 
 class PromptHistoryDetailView extends StatelessWidget {
   final Map<String, dynamic> historyItem;
   final Map<String, dynamic>? previousItem;
 
-  const PromptHistoryDetailView({
+  PromptHistoryDetailView({
     super.key,
     required this.historyItem,
     this.previousItem,
   });
-
+  final _controller = PromptHistoryControl();
   List<TextSpan> _buildDiffText(String oldText, String newText) {
     final dmp = DiffMatchPatch();
     final diffs = dmp.diff(oldText, newText);
@@ -41,6 +45,42 @@ class PromptHistoryDetailView extends StatelessWidget {
     }).toList();
   }
 
+  void _showRestoreDialog(
+      BuildContext context, Map<String, dynamic> historyItem) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Restore Version'),
+          content: const Text('Do you want to restore this version?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+                print(historyItem);
+                final String promptId = historyItem['promptId'] as String;
+                final List<String> updatedTexts =
+                    List<String>.from(historyItem['updatedTexts']);
+                final Timestamp timestamp =
+                    historyItem['timestamp'] as Timestamp;
+                _controller.restorePrompt(promptId, updatedTexts, timestamp);
+                showSnackBar(context, "Prompt restored successfully");
+                Navigator.pop(context, updatedTexts);
+              },
+              child: const Text('Restore'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final texts = historyItem['updatedTexts'] as List<dynamic>;
@@ -51,6 +91,14 @@ class PromptHistoryDetailView extends StatelessWidget {
       appBar: AppBar(
         title: Text(
             'History Detail - ${historyItem['timestamp']?.toDate().toString() ?? 'Unknown'}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.restore),
+            onPressed: () {
+              _showRestoreDialog(context, historyItem);
+            },
+          )
+        ],
       ),
       body: ListView.builder(
         itemCount: texts.length,
