@@ -17,7 +17,9 @@ class _PromptListViewState extends State<PromptListView> {
   @override
   void initState() {
     super.initState();
-    _fetchPromptHistory();
+    if (mounted) {
+      _fetchPromptHistory();
+    }
   }
 
   Future<void> _fetchPromptHistory() async {

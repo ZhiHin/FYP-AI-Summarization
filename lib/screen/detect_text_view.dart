@@ -19,6 +19,8 @@ class _DetectTextViewState extends State<DetectTextView> {
   bool _isLoading = true;
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  String _selectedLanguage = 'en';
+  String _selectedOption = 'format'; // Default selected option
 
   @override
   void initState() {
@@ -26,18 +28,10 @@ class _DetectTextViewState extends State<DetectTextView> {
     _initializeTextControllers();
   }
 
-  // @override
-  // void dispose() {
-  //   _pageController.dispose();
-  //   for (var controller in _textControllers) {
-  //     controller.dispose();
-  //   }
-  //   super.dispose();
-  // }
-
   Future<void> _initializeTextControllers() async {
     for (var url in widget.imageUrls) {
-      final text = await _control.generateFormatTextFromImage(url);
+      final text =
+          await _control.generateFormatTextFromImage(url, _selectedOption);
       _textControllers.add(TextEditingController(text: text));
     }
     if (mounted) {
@@ -75,6 +69,29 @@ class _DetectTextViewState extends State<DetectTextView> {
                         fit: BoxFit.contain,
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      DropdownButton<String>(
+                        value: _selectedOption,
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            _selectedOption = newValue!;
+                            _textControllers.clear();
+                            _initializeTextControllers();
+                          });
+                        },
+                        items: <String>['format', 'fine-grained']
+                            .map<DropdownMenuItem<String>>((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                      ),
+                    ],
                   ),
                   Padding(
                     padding: const EdgeInsets.all(8.0),
@@ -196,6 +213,24 @@ class _DetectTextViewState extends State<DetectTextView> {
       appBar: AppBar(
         title: const Text('Detect Text View'),
         actions: [
+          DropdownButton<String>(
+            value: _selectedLanguage,
+            onChanged: (String? newValue) {
+              setState(() {
+                _selectedLanguage = newValue!;
+                _isLoading = true;
+                _textControllers.clear();
+                _initializeTextControllers();
+              });
+            },
+            items: <String>['en', 'cn']
+                .map<DropdownMenuItem<String>>((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: Text(value.toUpperCase()),
+              );
+            }).toList(),
+          ),
           PopupMenuButton<String>(
             onSelected: (String result) {
               if (result == 'save') {
