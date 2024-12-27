@@ -8,7 +8,7 @@ from pkg_resources import resource_filename
 from pydantic import BaseModel
 import spacy
 from transformers import AutoModel, AutoTokenizer, pipeline, AutoModelForSeq2SeqLM
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageOps
 import requests
 from io import BytesIO
 import torch
@@ -21,6 +21,8 @@ from enum import Enum
 from symspellpy.symspellpy import SymSpell
 import spacy
 from happytransformer import HappyTextToText, TTSettings
+import cv2
+import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,7 +41,7 @@ app.add_middleware(
 )
 
 
-# Initialize SymSpell 
+#Initialize SymSpell 
 sym_spell = SymSpell(max_dictionary_edit_distance=15, prefix_length=16)
 dictionary_path = resource_filename('symspellpy', 'frequency_dictionary_en_82_765.txt')
 bigram_path = resource_filename('symspellpy', 'frequency_bigramdictionary_en_243_342.txt')
@@ -138,7 +140,8 @@ except Exception as e:
 
 class OCRRequest(BaseModel):
     image_url: str
-
+    option: str 
+    
 class SummarizationType(str, Enum):
     abstractive = "abstractive"
     extractive = "extractive"
@@ -381,17 +384,113 @@ def enhance_text_with_t5(text: str) -> str:
         logging.warning("T5-Base model not available for text enhancement.")
         return text
 
+def load_image(image_file):
+    if isinstance(image_file, str) and (image_file.startswith('http') or image_file.startswith('https')):
+        # Load image from URL
+        response = requests.get(image_file)
+        image = Image.open(BytesIO(response.content)).convert('RGB')
+    else:
+        # Load image from local file path
+        image = Image.open(image_file).convert('RGB')
+    return image
+
+def preprocess_image(image):
+    # Convert PIL image to OpenCV format
+    image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    
+    # Resize the image to a fixed size (e.g., 1024x1024)
+    image_cv = cv2.resize(image_cv, (1024, 1024), interpolation=cv2.INTER_LANCZOS4)
+    
+    # Convert to grayscale
+    gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
+    
+    # Perform Otsu threshold
+    ret, thresh1 = cv2.threshold(gray, 128, 255, cv2.THRESH_OTSU | cv2.THRESH_BINARY_INV)
+    
+    # Choosing the right kernel
+    rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
+    dilation = cv2.dilate(thresh1, rect_kernel, iterations=1)
+    
+    # Find contours on the dilated image
+    contours, _ = cv2.findContours(dilation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    
+    # Process and filter bounding boxes
+    bounding_boxes = []
+    min_area = 1000
+    min_width = 100  # Minimum width for a text region
+    
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        aspect_ratio = w / float(h)
+        
+        # Filter boxes based on size and aspect ratio
+        if w * h > min_area and w > min_width and aspect_ratio > 2:
+            x = max(0, x - 10)
+            y = max(0, y - 5)
+            w = min(image_cv.shape[1] - x, w + 20)
+            h = min(image_cv.shape[0] - y, h + 10)
+            
+            cv2.rectangle(image_cv, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            bounding_boxes.append([x, y, x + w, y + h])
+    
+    # Sort boxes top to bottom
+    bounding_boxes.sort(key=lambda box: box[1])
+    
+    # Print out bounding boxes
+    print("Bounding boxes:", bounding_boxes)
+    
+    # Display the image with bounding boxes
+    cv2.imshow('Image with Bounding Boxes', image_cv)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    
+    # Convert back to PIL format
+    image_pil = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_GRAY2RGB))
+    return image_pil, bounding_boxes
+
 
 @app.post("/format")
 async def perform_ocr(request: OCRRequest):
     try:
         logging.info(f"Processing image from URL: {request.image_url}")
-        res = model.chat_crop(tokenizer, request.image_url, ocr_type='format')
-        res = correct_text(res)
-        return {"generated_text": res}
+        image = load_image(request.image_url)
+        
+        
+        # Save the image to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+            image.save(temp_file, format="JPEG")
+            temp_file_path = temp_file.name
+        try:
+            if request.option == "format":
+                logging.info(f"Processing image from URL: {request.image_url}")
+                res = model.chat_crop(tokenizer, request.image_url, ocr_type='format')
+                res = correct_text(res)
+                return {"generated_text": res}
+            elif request.option == "fine-grained":
+                # Convert bounding boxes to a string format
+                image, bounding_boxes = preprocess_image(image)
+                ocr_boxes = [f"[{x},{y},{x2},{y2}]" for x, y, x2, y2 in bounding_boxes]
+                print(ocr_boxes)
+                results = []
+                for box in ocr_boxes:
+                    res = model.chat(tokenizer, temp_file_path, ocr_type='format', ocr_box=box)
+                    print(res)
+                    # Remove \text{} tags but keep the text inside
+                    cleaned_text = re.sub(r'\\text\{(.*?)\}', r'\1', res)
+                    results.append(cleaned_text)
+                
+                # Combine results
+                combined_result = " ".join(results)
+                return {"generated_text": combined_result}
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
     except Exception as e:
         logging.error(f"Error processing image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 # PDF Text Extraction Endpoint
 @app.post("/extract_text")

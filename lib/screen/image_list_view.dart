@@ -3,7 +3,6 @@ import 'package:ai_summarization/controller/image_list_control.dart';
 import 'package:ai_summarization/screen/image_zoom.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:insta_image_viewer/insta_image_viewer.dart';
 import 'package:path/path.dart' as path;
 
 class ImageListView extends StatefulWidget {

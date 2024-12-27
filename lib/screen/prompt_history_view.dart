@@ -19,7 +19,9 @@ class _PromptHistoryViewState extends State<PromptHistoryView> {
   @override
   void initState() {
     super.initState();
-    _retrievePromptHistory();
+    if (mounted) {
+      _retrievePromptHistory();
+    }
   }
 
   @override
