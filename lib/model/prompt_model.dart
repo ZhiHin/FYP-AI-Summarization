@@ -72,15 +72,6 @@ class PromptModel {
     }
   }
 
-  Future<void> updatePromptNameInFirebase(
-      String promptId, String promptName) async {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      print('User not logged in');
-      return;
-    }
-  }
-
   Future<List<Map<String, dynamic>>> fetchPrompts() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -107,6 +98,35 @@ class PromptModel {
     }
   }
 
+  Future<Map<String, dynamic>> fetchText(String promptId) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('User not logged in');
+      return {};
+    }
+
+    try {
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('prompts')
+          .doc(promptId)
+          .get();
+
+      if (doc.exists) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        data['promptId'] = doc.id;
+        return data;
+      } else {
+        print('Prompt not found');
+        return {};
+      }
+    } catch (e) {
+      print('Error fetching prompt: $e');
+      return {};
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchPromptHistory(String promptId) async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -124,12 +144,89 @@ class PromptModel {
 
       return snapshot.docs.map((doc) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        data['promptId'] = doc.id;
+        data['promptId'] = promptId;
         return data;
       }).toList();
     } catch (e) {
       print('Error retrieving prompts: $e');
       return [];
     }
+  }
+
+  Future<void> deletePrompt(String promptId) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('User not logged in');
+      return;
+    }
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('prompts')
+          .doc(promptId)
+          .delete();
+
+      QuerySnapshot historySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('promptHistory')
+          .where('promptId', isEqualTo: promptId)
+          .get();
+      for (DocumentSnapshot doc in historySnapshot.docs) {
+        await doc.reference.delete();
+      }
+      print('Prompt deleted successfully');
+    } catch (e) {
+      print('Error deleting prompt: $e');
+    }
+  }
+
+  Future<void> restorePrompt(
+      String promptId, List<String> promptTexts, Timestamp date) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('User not logged in');
+      return;
+    }
+    try {
+      print(promptId);
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('prompts')
+          .doc(promptId)
+          .update({'promptTexts': promptTexts});
+
+      QuerySnapshot historySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('promptHistory')
+          .where('promptId', isEqualTo: promptId)
+          .where('timestamp', isGreaterThan: date)
+          .get();
+
+      for (DocumentSnapshot doc in historySnapshot.docs) {
+        await doc.reference.delete();
+      }
+      print('Prompt deleted successfully');
+    } catch (e) {
+      print('Error deleting prompt: $e');
+    }
+  }
+
+  Future<void> renamePrompt(String promptId, String newName) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('User not logged in');
+      return;
+    }
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('prompts')
+        .doc(promptId)
+        .update({'promptName': newName});
   }
 }

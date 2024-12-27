@@ -5,4 +5,8 @@ class PromptListControl {
   Future<List<Map<String, dynamic>>> fetchPrompts() async {
     return await _model.fetchPrompts();
   }
+
+  Future<void> deletePrompt(String promptId) async {
+    await _model.deletePrompt(promptId);
+  }
 }
