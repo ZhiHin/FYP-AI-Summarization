@@ -30,20 +30,37 @@ class FileCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.picture_as_pdf, color: Colors.blue),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(fileName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text("Date: $date", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                  Text("Time: $time", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                ],
-              ),
-            ],
+          Expanded(
+            child: Row(
+              children: [
+                const Icon(Icons.picture_as_pdf, color: Colors.blue),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Tooltip(
+                        message: fileName,
+                        child: Text(
+                          fileName,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                      Text("Date: $date",
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12)),
+                      Text("Time: $time",
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 10),
           Text(pages, style: const TextStyle(color: Colors.grey)),
         ],
       ),
