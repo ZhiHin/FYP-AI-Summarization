@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
@@ -18,17 +19,29 @@ class _DocumentConverterViewState extends State<DocumentConverterPage> {
   bool _isLoading = false;
   double _conversionProgress = 0;
   Document? _selectedDocument; // New property to store selected document
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void initState() {
     super.initState();
-    _loadDocuments();
+    _checkAuthAndLoadDocuments();
+  }
+
+  Future<void> _checkAuthAndLoadDocuments() async {
+    if (_auth.currentUser == null) {
+      _showError('Please login to access documents');
+      return;
+    }
+    await _loadDocuments();
   }
 
   Future<void> _loadDocuments() async {
+    if (_isLoading) return;
+
     setState(() => _isLoading = true);
     try {
-      _documents = await _controller.getDocuments();
+      final docs = await _controller.getDocuments();
+      setState(() => _documents = docs);
     } catch (e) {
       _showError('Failed to load documents: $e');
     } finally {
@@ -197,10 +210,12 @@ class _DocumentConverterViewState extends State<DocumentConverterPage> {
   }
 
   void _showError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -266,8 +281,12 @@ class _DocumentConverterViewState extends State<DocumentConverterPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
       appBar: AppBar(
+        elevation: 0,
+        centerTitle: true,
         title: const Text('Document Converter'),
         actions: [
           IconButton(
@@ -276,74 +295,200 @@ class _DocumentConverterViewState extends State<DocumentConverterPage> {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          if (_isLoading && _conversionProgress > 0)
-            LinearProgressIndicator(value: _conversionProgress),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Convert your documents between PDF and Word formats',
-                          style: Theme.of(context).textTheme.titleMedium,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed:
-                              _isLoading ? null : _pickAndConvertDocument,
-                          icon: const Icon(Icons.compare_arrows),
-                          label: const Text('Convert Document'),
-                        ),
-                      ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            if (_isLoading && _conversionProgress > 0)
+              Column(
+                children: [
+                  LinearProgressIndicator(
+                    value: _conversionProgress,
+                    backgroundColor: theme.colorScheme.surfaceVariant,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      theme.colorScheme.primary,
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: _isLoading && _conversionProgress == 0
-                      ? const Center(child: CircularProgressIndicator())
-                      : ListView.builder(
-                          itemCount: _documents.length,
-                          itemBuilder: (context, index) {
-                            final doc = _documents[index];
-                            return Card(
-                              child: ListTile(
-                                leading: Icon(_getFormatIcon(doc.documentType)),
-                                title: Text(_getDisplayTitle(doc)),
-                                subtitle: Text(
-                                  doc.convertedFormat.isNotEmpty
-                                      ? 'Converted from ${doc.originalFormat} to ${doc.convertedFormat}'
-                                      : 'Original format: ${doc.originalFormat}',
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(_formatFileSize(doc.size)),
-                                    IconButton(
-                                      icon: Icon(Icons.download),
-                                      onPressed: _isLoading
-                                          ? null
-                                          : () => _downloadDocument(doc),
-                                    ),
-                                  ],
-                                ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'Converting... ${(_conversionProgress * 100).toInt()}%',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            Expanded(
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildConverterCard(theme),
+                          const SizedBox(height: 16),
+                          if (_documents.isNotEmpty)
+                            Text(
+                              'Recent Conversions',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
                               ),
-                            );
-                          },
-                        ),
-                ),
-              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  _buildDocumentsList(theme),
+                ],
+              ),
             ),
-          ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _isLoading ? null : _pickAndConvertDocument,
+        icon: const Icon(Icons.add),
+        label: const Text('Convert'),
+      ),
+    );
+  }
+
+  Widget _buildConverterCard(ThemeData theme) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.compare_arrows,
+              size: 48,
+              color: Colors.blue,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Document Converter',
+              style: theme.textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Convert your documents between PDF and Word formats with ease',
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            _buildFormatGrid(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormatGrid() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildFormatItem(Icons.picture_as_pdf, 'PDF'),
+        const SizedBox(width: 8),
+        const Icon(Icons.compare_arrows, color: Colors.grey),
+        const SizedBox(width: 8),
+        _buildFormatItem(Icons.description, 'Word'),
+      ],
+    );
+  }
+
+  Widget _buildFormatItem(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 32, color: Colors.blue),
+          const SizedBox(height: 4),
+          Text(label),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentsList(ThemeData theme) {
+    if (_isLoading && _conversionProgress == 0) {
+      return const SliverFillRemaining(
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return SliverPadding(
+      padding: const EdgeInsets.all(16.0),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final doc = _documents[index];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => _downloadDocument(doc),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceVariant,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          _getFormatIcon(doc.documentType),
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _getDisplayTitle(doc),
+                              style: theme.textTheme.titleMedium,
+                            ),
+                            Text(
+                              doc.convertedFormat.isNotEmpty
+                                  ? '${doc.originalFormat} → ${doc.convertedFormat}'
+                                  : doc.originalFormat,
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            _formatFileSize(doc.size),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.download),
+                            onPressed: _isLoading
+                                ? null
+                                : () => _downloadDocument(doc),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+          childCount: _documents.length,
+        ),
       ),
     );
   }
@@ -361,7 +506,7 @@ class _DocumentConverterViewState extends State<DocumentConverterPage> {
     switch (type) {
       case DocumentType.pdf:
         return Icons.picture_as_pdf;
-      case DocumentType.document:
+      case DocumentType.word:
         return Icons.description;
       default:
         return Icons.insert_drive_file;
