@@ -96,26 +96,35 @@ class AudioController {
   }
 
   Future<String?> generateTranscript(
-      BuildContext context, String audioId, String fileUrl) async {
-    if (currentUser == null) {
-      _showSnackBar(context, 'Please log in to generate transcript');
-      return null;
+    BuildContext context, String audioId, String fileUrl) async {
+  if (currentUser == null) {
+    _showSnackBar(context, 'Please log in to generate transcript');
+    return null;
+  }
+
+  try {
+    // Fetch the document and handle data access safely
+    DocumentSnapshot audioDoc = await _firestore
+        .collection('users')
+        .doc(currentUser!.uid)
+        .collection('audios')
+        .doc(audioId)
+        .get();
+
+    if (!audioDoc.exists) {
+      throw Exception('Audio document not found');
     }
 
-    try {
-      // Fetch the file URL from Firestore
-      DocumentSnapshot audioDoc = await _firestore
-          .collection('users')
-          .doc(currentUser!.uid)
-          .collection('audios')
-          .doc(audioId)
-          .get();
+    // Safely access data with type checking
+    final data = audioDoc.data() as Map<String, dynamic>?;
+    if (data == null) {
+      throw Exception('Audio data is null');
+    }
 
-      String correctFileUrl = audioDoc['fileUrl'];
-
-      if (correctFileUrl.isEmpty || !correctFileUrl.startsWith('https://')) {
-        throw Exception('Invalid file URL');
-      }
+    String correctFileUrl = data['fileUrl'] as String? ?? fileUrl;
+    if (correctFileUrl.isEmpty || !correctFileUrl.startsWith('https://')) {
+      throw Exception('Invalid file URL: $correctFileUrl');
+    }
 
       // Download the file from Firebase Storage
       final tempDir = await getTemporaryDirectory();
