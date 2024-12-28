@@ -1050,12 +1050,8 @@ class _DocumentsPageState extends State<DocumentsPage> {
     switch (documentType.toLowerCase()) {
       case 'pdf':
         return Icons.picture_as_pdf;
-      case 'document':
+      case 'word':
         return Icons.description;
-      case 'spreadsheet':
-        return Icons.table_chart;
-      case 'presentation':
-        return Icons.slideshow;
       case 'image':
         return Icons.image;
       case 'audio':
