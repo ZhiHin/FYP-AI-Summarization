@@ -175,7 +175,7 @@ class _TranslateScreenState extends State<TranslateScreen> {
               itemBuilder: (context, index) {
                 final doc = documents.docs[index];
                 return ListTile(
-                  leading: const Icon(Icons.description),
+                  leading: const Icon(Icons.picture_as_pdf),
                   title: Text(doc['name']),
                   subtitle: Text(
                       'Uploaded: ${doc['uploadedAt']?.toDate().toString() ?? 'N/A'}'),
