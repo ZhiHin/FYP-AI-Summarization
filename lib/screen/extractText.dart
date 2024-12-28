@@ -25,7 +25,8 @@ class ExtractScreen extends StatefulWidget {
   State<ExtractScreen> createState() => _ExtractScreenState();
 }
 
-class _ExtractScreenState extends State<ExtractScreen> with TickerProviderStateMixin {
+class _ExtractScreenState extends State<ExtractScreen>
+    with TickerProviderStateMixin {
   late TabController _tabController;
   final Map<String, String> _extractedTexts = {};
   final Map<String, String?> _summaries = {};
@@ -128,90 +129,90 @@ class _ExtractScreenState extends State<ExtractScreen> with TickerProviderStateM
     }
   }
 
-   Future<void> _summarizeText() async {
-  final selectedIndices = _selectedDocuments.entries
-      .where((entry) => entry.value)
-      .map((entry) => entry.key)
-      .toList();
+  Future<void> _summarizeText() async {
+    final selectedIndices = _selectedDocuments.entries
+        .where((entry) => entry.value)
+        .map((entry) => entry.key)
+        .toList();
 
-  if (selectedIndices.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please select at least one document')),
-    );
-    return;
-  }
+    if (selectedIndices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one document')),
+      );
+      return;
+    }
 
-  setState(() => _isSummarizing = true);
+    setState(() => _isSummarizing = true);
 
-  try {
-    for (final index in selectedIndices) {
-      final url = widget.fileUrls[index];
-      final text = _extractedTexts[url];
-      
-      if (text == null || text.isEmpty) continue;
+    try {
+      for (final index in selectedIndices) {
+        final url = widget.fileUrls[index];
+        final text = _extractedTexts[url];
 
-      setState(() {
-        _summaries[index.toString()] = 'Generating summary...';
-        _displayedSummaries[index.toString()] = '';
-      });
+        if (text == null || text.isEmpty) continue;
 
-      final summarizeResponse = await http
-          .post(
-            Uri.parse('http://192.168.1.106:8000/summarize'),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({
-              'text': text,
-              'summary_type': _selectedSummarizationTechnique,
-              'max_length': 150,
-            }),
-          )
-          .timeout(
-            const Duration(minutes: 5),
-            onTimeout: () => throw TimeoutException('Summarization timeout'),
-          );
+        setState(() {
+          _summaries[index.toString()] = 'Generating summary...';
+          _displayedSummaries[index.toString()] = '';
+        });
 
-      if (summarizeResponse.statusCode != 200) {
-        final error = json.decode(summarizeResponse.body)['error'];
-        throw Exception('Failed to summarize text: $error');
+        final summarizeResponse = await http
+            .post(
+              Uri.parse('http://192.168.1.106:8000/summarize'),
+              headers: {'Content-Type': 'application/json'},
+              body: json.encode({
+                'text': text,
+                'summary_type': _selectedSummarizationTechnique,
+                'max_length': 150,
+              }),
+            )
+            .timeout(
+              const Duration(minutes: 5),
+              onTimeout: () => throw TimeoutException('Summarization timeout'),
+            );
+
+        if (summarizeResponse.statusCode != 200) {
+          final error = json.decode(summarizeResponse.body)['error'];
+          throw Exception('Failed to summarize text: $error');
+        }
+
+        final summaryData = json.decode(summarizeResponse.body);
+        setState(() {
+          _summaries[index.toString()] = summaryData['summary'];
+          // Start displaying the summary with typewriter effect
+          _currentSummary = summaryData['summary'];
+          _startDisplayingSummaryForIndex(index.toString());
+        });
       }
-
-      final summaryData = json.decode(summarizeResponse.body);
-      setState(() {
-        _summaries[index.toString()] = summaryData['summary'];
-        // Start displaying the summary with typewriter effect
-        _currentSummary = summaryData['summary'];
-        _startDisplayingSummaryForIndex(index.toString());
-      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error generating summaries: $e')),
+      );
+    } finally {
+      setState(() => _isSummarizing = false);
     }
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error generating summaries: $e')),
-    );
-  } finally {
-    setState(() => _isSummarizing = false);
   }
-}
 
-void _startDisplayingSummaryForIndex(String index) {
-  if (_summaries[index] == null) return;
+  void _startDisplayingSummaryForIndex(String index) {
+    if (_summaries[index] == null) return;
 
-  int charIndex = 0;
-  _timer?.cancel();
-  _timer = Timer.periodic(const Duration(milliseconds: 12), (timer) {
-    if (charIndex < _summaries[index]!.length) {
-      setState(() {
-        _displayedSummaries[index] = 
-            _summaries[index]!.substring(0, charIndex) + '|';
-        charIndex++;
-      });
-    } else {
-      setState(() {
-        _displayedSummaries[index] = _summaries[index];
-      });
-      timer.cancel();
-    }
-  });
-}
+    int charIndex = 0;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(milliseconds: 12), (timer) {
+      if (charIndex < _summaries[index]!.length) {
+        setState(() {
+          _displayedSummaries[index] =
+              _summaries[index]!.substring(0, charIndex) + '|';
+          charIndex++;
+        });
+      } else {
+        setState(() {
+          _displayedSummaries[index] = _summaries[index];
+        });
+        timer.cancel();
+      }
+    });
+  }
 
   Future<void> _generateAndUploadPdf({
     required String content,
@@ -281,7 +282,8 @@ void _startDisplayingSummaryForIndex(String index) {
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       // Remove .pdf if it exists in documentName and add it back once
-      final baseFileName = documentName?.replaceAll('.pdf', '') ?? timestamp.toString();
+      final baseFileName =
+          documentName?.replaceAll('.pdf', '') ?? timestamp.toString();
       final fileName = '${contentType}_$baseFileName.pdf';
 
       final output = await getTemporaryDirectory();
@@ -455,7 +457,7 @@ void _startDisplayingSummaryForIndex(String index) {
     );
   }
 
- Widget _buildSummaryTab() {
+  Widget _buildSummaryTab() {
     return Column(
       children: [
         Card(
@@ -531,7 +533,8 @@ void _startDisplayingSummaryForIndex(String index) {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.summarize),
-                  label: Text(_isSummarizing ? 'Generating...' : 'Generate Summaries'),
+                  label: Text(
+                      _isSummarizing ? 'Generating...' : 'Generate Summaries'),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.all(16),
                   ),
@@ -541,55 +544,57 @@ void _startDisplayingSummaryForIndex(String index) {
           ),
         ),
         Expanded(
-        child: ListView.builder(
-          padding: const EdgeInsets.all(8),
-          itemCount: widget.fileUrls.length,
-          itemBuilder: (context, index) {
-            final summary = _summaries[index.toString()];
-            if (summary == null) return const SizedBox.shrink();
-            
-            final displayedSummary = _displayedSummaries[index.toString()] ?? summary;
-            
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Summary of ${widget.documentNames[index]}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+          child: ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: widget.fileUrls.length,
+            itemBuilder: (context, index) {
+              final summary = _summaries[index.toString()];
+              if (summary == null) return const SizedBox.shrink();
+
+              final displayedSummary =
+                  _displayedSummaries[index.toString()] ?? summary;
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Summary of ${widget.documentNames[index]}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        ),
-                        _buildActionButtons(summary, 'Summary', widget.documentNames[index]),
-                      ],
+                          _buildActionButtons(
+                              summary, 'Summary', widget.documentNames[index]),
+                        ],
+                      ),
                     ),
-                  ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      displayedSummary,
-                      style: const TextStyle(fontSize: 16, height: 1.5),
+                    const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        displayedSummary,
+                        style: const TextStyle(fontSize: 16, height: 1.5),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
+                  ],
+                ),
+              );
+            },
+          ),
         ),
-      ),
-    ],
-  );
-}
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

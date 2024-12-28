@@ -5,6 +5,7 @@ import 'audioProcess.dart';
 import 'document_converter_page.dart';
 import 'document_summarize.dart';
 import 'speech_recognition.dart';
+import 'text_summarize.dart';
 import 'translate.dart';
 
 class ToolsPage extends StatelessWidget {
@@ -68,11 +69,11 @@ class ToolsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> tools = [
       {
-        'title': 'Document Converter',
-        'icon': Icons.description,
-        'color': Colors.blue,
-        'page': DocumentConverterPage(),
-        'description': 'Convert documents between different formats',
+        'title': 'Text Summarizer',
+        'icon': Icons.text_fields,
+        'color': Colors.indigo,
+        'page': const TextSummarizeScreen(),
+        'description': 'Summarize any text quickly and efficiently',
       },
       {
         'title': 'Document Summarizer',
@@ -82,25 +83,25 @@ class ToolsPage extends StatelessWidget {
         'description': 'Get quick summaries of your documents',
       },
       {
-        'title': 'Speech Recognition',
-        'icon': Icons.mic,
-        'color': Colors.orange,
-        'page': const SpeechRecognitionScreen(),
-        'description': 'Convert speech to text in real-time',
-      },
-      {
-        'title': 'Translation',
-        'icon': Icons.translate,
-        'color': Colors.purple,
-        'page': const TranslateScreen(),
-        'description': 'Translate text between languages',
-      },
-      {
         'title': 'Text Detection',
         'icon': Icons.document_scanner,
         'color': Colors.red,
         'page': GalleryView(),
         'description': 'Detect and extract text from images',
+      },
+      {
+        'title': 'Audio Processing',
+        'icon': Icons.audio_file,
+        'color': Colors.amber,
+        'page': AudioProcessPage(),
+        'description': 'Process and analyze audio files',
+      },
+      {
+        'title': 'Speech Recognition',
+        'icon': Icons.mic,
+        'color': Colors.orange,
+        'page': const SpeechRecognitionScreen(),
+        'description': 'Convert speech to text in real-time',
       },
       {
         'title': 'Prompt History',
@@ -110,11 +111,18 @@ class ToolsPage extends StatelessWidget {
         'description': 'View and manage your prompt history',
       },
       {
-        'title': 'Audio Processing',
-        'icon': Icons.audio_file,
-        'color': Colors.amber,
-        'page': AudioProcessPage(),
-        'description': 'Process and analyze audio files',
+        'title': 'Document Converter',
+        'icon': Icons.description,
+        'color': Colors.blue,
+        'page': DocumentConverterPage(),
+        'description': 'Convert documents between different formats',
+      },
+      {
+        'title': 'Translation',
+        'icon': Icons.translate,
+        'color': Colors.purple,
+        'page': const TranslateScreen(),
+        'description': 'Translate text between languages',
       },
     ];
 
