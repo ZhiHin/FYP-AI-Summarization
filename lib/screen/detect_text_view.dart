@@ -21,7 +21,7 @@ class _DetectTextViewState extends State<DetectTextView> {
   int _currentPage = 0;
   String _selectedLanguage = 'en';
   String _selectedOption = 'format'; // Default selected option
-
+  String type = 'prompt';
   @override
   void initState() {
     super.initState();
@@ -193,7 +193,7 @@ class _DetectTextViewState extends State<DetectTextView> {
               onPressed: () {
                 try {
                   _control.saveOriginal(widget.imageUrls, detectedTexts,
-                      _nameController.text, context);
+                      _nameController.text, type);
                   Navigator.of(context).pop();
                   showSnackBar(context, "Prompt saved successfully");
                 } catch (e) {

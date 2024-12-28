@@ -37,7 +37,8 @@ class DetectTextControl {
   }
 
   Future<void> saveOriginal(List<String> imageUrls, List<String> promptTexts,
-      String promptName, BuildContext context) async {
-    await _promptModel.savePromptToFirebase(imageUrls, promptTexts, promptName);
+      String promptName, String type) async {
+    await _promptModel.savePromptToFirebase(
+        imageUrls, promptTexts, promptName, type);
   }
 }
