@@ -85,7 +85,7 @@ class _GalleryViewState extends State<GalleryView> {
                 : ListView.builder(
                     itemCount: _imageData.length,
                     itemBuilder: (context, index) {
-                      String imageUrl = _imageData[index]['imageUrl']!;
+                      String imageUrl = _imageData[index]['fileUrl']!;
                       String imageName = _imageData[index]['name']!;
                       bool isSelected = _selectedIndices.contains(index);
                       return GestureDetector(
