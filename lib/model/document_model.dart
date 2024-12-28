@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Enum for document types
-enum DocumentType { pdf, document, spreadsheet, presentation, other }
+enum DocumentType { pdf, word, spreadsheet, presentation, other }
 
 // Utility function to determine document type
 DocumentType getDocumentType(String fileName) {
@@ -11,7 +11,7 @@ DocumentType getDocumentType(String fileName) {
       return DocumentType.pdf;
     case 'docx':
     case 'doc':
-      return DocumentType.document;
+      return DocumentType.word;
     case 'xlsx':
     case 'xls':
       return DocumentType.spreadsheet;
@@ -100,7 +100,7 @@ class Document {
   // Convert Document to a map for Firestore
   Map<String, dynamic> toFirestore() {
     return {
-      'title': title,
+      'name': title,
       'description': description ?? '',
       'size': size,
       'uploadedAt': uploadedAt,

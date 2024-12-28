@@ -6,7 +6,10 @@ import '../components/folder_card.dart';
 import '../components/nav_button.dart';
 import '../components/file_card.dart';
 import 'package:intl/intl.dart';
-
+import 'document_summarize.dart';
+import 'gallery_tool_view.dart';
+import 'speech_recognition.dart';
+import 'text_summarize.dart';
 import 'translate.dart';
 
 class HomePage extends StatefulWidget {
@@ -420,24 +423,41 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   NavButton(
-                    icon: Icons.picture_as_pdf,
-                    label: "PDF Tools",
-                  ),
-                  NavButton(
-                    icon: Icons.text_snippet,
-                    label: "Extract Text",
-                  ),
-                  NavButton(
                     icon: Icons.summarize,
+                    label: "Text Summarize",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const TextSummarizeScreen()),
+                    ),
+                  ),
+                  NavButton(
+                    icon: Icons.description,
                     label: "Document Summarize",
+                     onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const DocumentSummarizePage()),
+                    ),
                   ),
                   NavButton(
-                    icon: Icons.image,
-                    label: "Import Images",
+                    icon: Icons.document_scanner,
+                    label: "Text Detection",
+                     onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => GalleryView()),
+                    ),
                   ),
                   NavButton(
-                    icon: Icons.folder,
-                    label: "Import Folders",
+                    icon: Icons.mic,
+                    label: "Speech Recognition",
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) =>
+                              const SpeechRecognitionScreen()),
+                    ),
                   ),
                   SizedBox(width: 8),
                 ],

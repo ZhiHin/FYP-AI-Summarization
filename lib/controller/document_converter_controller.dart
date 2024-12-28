@@ -111,7 +111,7 @@ class DocumentConverterController {
         case DocumentType.pdf:
           await _convertPdfToWord(sourceFile, outputPath, onProgress);
           break;
-        case DocumentType.document:
+        case DocumentType.word:
           await _convertWordToPdf(sourceFile, outputPath, onProgress);
           break;
         default:
@@ -178,7 +178,7 @@ class DocumentConverterController {
     switch (inputType) {
       case DocumentType.pdf:
         return 'docx';
-      case DocumentType.document:
+      case DocumentType.word:
         return 'pdf';
       default:
         return 'pdf';
@@ -210,37 +210,66 @@ class DocumentConverterController {
     }
   }
 
-  Future<List<Document>> getDocuments({
-    String? folderId,
-    DocumentType? documentType,
-  }) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) throw Exception('User not authenticated');
+  Future<List<Document>> getDocuments() async {
+  try {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print('Debug: User not authenticated');
+      throw Exception('User not authenticated');
+    }
 
-      Query query =
-          _firestore.collection('users').doc(user.uid).collection('documents');
+    print('Debug: Fetching documents for user ${user.uid}');
 
-      if (folderId != null) {
-        query = query.where('folderId', isEqualTo: folderId);
-      }
+    final querySnapshot = await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('documents')
+        .get();
 
-      if (documentType != null) {
-        query = query.where('documentType',
-            isEqualTo: documentType.toString().split('.').last);
-      }
+    print('Debug: Found ${querySnapshot.docs.length} documents');
 
-      final querySnapshot =
-          await query.orderBy('uploadedAt', descending: true).get();
-
-      return querySnapshot.docs
-          .map((doc) => Document.fromFirestore(doc))
-          .toList();
-    } catch (e) {
-      print('Error getting documents: $e');
+    if (querySnapshot.docs.isEmpty) {
+      print('Debug: No documents found');
       return [];
     }
+
+    final documents = querySnapshot.docs.map((doc) {
+      final data = doc.data();
+      print('Debug: Document data: $data');
+      
+      return Document(
+        id: doc.id,
+        title: data['name'] ?? '',
+        fileUrl: data['fileUrl'] ?? '',
+        uploadedAt: (data['uploadedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+        size: data['size'] ?? 0,
+        documentType: _getDocumentType(data['documentType'] ?? ''),
+        originalFormat: data['documentType'] ?? '',
+        convertedFormat: data['convertedFormat'] ?? '',
+        pageCount: data['pageCount'] ?? 0,
+      );
+    }).toList();
+
+    print('Debug: Processed ${documents.length} documents');
+    return documents;
+
+  } catch (e) {
+    print('Debug: Error in getDocuments: $e');
+    return [];
   }
+}
+
+DocumentType _getDocumentType(String type) {
+  switch (type.toLowerCase()) {
+    case 'pdf':
+      return DocumentType.pdf;
+    case 'doc':
+    case 'docx':
+      return DocumentType.word;
+    default:
+      return DocumentType.other;
+  }
+}
 
   Future<Document?> convertDocumentFromUrl(
     Document sourceDocument, {
