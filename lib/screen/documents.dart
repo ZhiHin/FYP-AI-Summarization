@@ -583,16 +583,31 @@ class _DocumentsPageState extends State<DocumentsPage> {
           pageCount = await _getPdfPageCount(filePath);
         }
 
-        final document = {
-          'name': fileName,
-          'description': '',
-          'size': fileSize,
-          'uploadedAt': uploadDate,
-          'pageCount': pageCount ?? 0,
-          'fileUrl': fileUrl,
-          'folderId': _selectedFolderId,
-          'documentType': documentType.toString().split('.').last,
-        };
+        final document = documentType == DocumentType.audios
+            ? {
+                'name': fileName,
+                'description': '',
+                'size': fileSize,
+                'uploadedAt': uploadDate,
+                'fileUrl': fileUrl,
+                'folderId': _selectedFolderId,
+                'documentType': 'audio', 
+                'audioId': DateTime.now()
+                    .millisecondsSinceEpoch
+                    .toString(), // Add audioId
+                'transcribed': false, // Add transcription status
+                'transcriptText': null, // Add transcript field
+              }
+            : {
+                'name': fileName,
+                'description': '',
+                'size': fileSize,
+                'uploadedAt': uploadDate,
+                'pageCount': pageCount ?? 0,
+                'fileUrl': fileUrl,
+                'folderId': _selectedFolderId,
+                'documentType': documentType.toString().split('.').last,
+              };
 
         await _firestore
             .collection('users')

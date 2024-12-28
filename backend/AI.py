@@ -42,6 +42,7 @@ app.add_middleware(
 
 
 #Initialize SymSpell 
+"""
 sym_spell = SymSpell(max_dictionary_edit_distance=15, prefix_length=16)
 dictionary_path = resource_filename('symspellpy', 'frequency_dictionary_en_82_765.txt')
 bigram_path = resource_filename('symspellpy', 'frequency_bigramdictionary_en_243_342.txt')
@@ -78,6 +79,7 @@ try:
     logging.info("spaCy model loaded successfully")
 except Exception as e:
     logging.error(f"Error loading spaCy model: {e}")
+"""
 
 # Initialize the OCR model (GOT-OCR2.0)
 try:
@@ -321,9 +323,9 @@ def correct_text(text: str) -> str:
                 corrected_sentences.append(sentence)
                 logging.info(f"Skipped correction for sentence with numbers: {sentence}")
             else:
-                suggestions = sym_spell.lookup_compound(sentence, max_edit_distance=12)
-                corrected_sentence = suggestions[0].term.capitalize()
-                corrected_sentences.append(corrected_sentence)
+                #suggestions = sym_spell.lookup_compound(sentence, max_edit_distance=12)
+                #corrected_sentence = suggestions[0].term.capitalize()
+                corrected_sentences.append(sentence)
         # Combine corrected sentences
         corrected_paragraph = '. '.join(corrected_sentences)
         corrected_paragraph = enhance_text_with_t5(corrected_paragraph)
@@ -464,7 +466,7 @@ async def perform_ocr(request: OCRRequest):
             if request.option == "format":
                 logging.info(f"Processing image from URL: {request.image_url}")
                 res = model.chat_crop(tokenizer, request.image_url, ocr_type='format')
-                res = correct_text(res)
+                #res = correct_text(res)
                 return {"generated_text": res}
             elif request.option == "fine-grained":
                 # Convert bounding boxes to a string format

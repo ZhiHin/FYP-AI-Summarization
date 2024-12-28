@@ -24,7 +24,7 @@ class DetectTextControl {
   Future<String> generateFormatTextFromImage(
       String imageUrl, String selectedOption) async {
     final response = await http.post(
-      Uri.parse('http://192.168.0.171:8000/format'),
+      Uri.parse('http://192.168.1.106:8000/format'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'image_url': imageUrl, 'option': selectedOption}),
     );

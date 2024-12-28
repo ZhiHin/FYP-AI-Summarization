@@ -45,7 +45,8 @@ class _GalleryViewState extends State<GalleryView> {
     List<Map<String, dynamic>> selectedImages =
         _selectedIndices.map((index) => _imageData[index]).toList();
     List<String> selectedImageUrls =
-        selectedImages.map((image) => image['imageUrl'] as String).toList();
+        selectedImages.map((image) => image['fileUrl'] as String).toList();
+        print(selectedImageUrls);
     if (selectedImages.isEmpty) {
       return;
     }

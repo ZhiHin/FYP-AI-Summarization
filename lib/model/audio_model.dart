@@ -18,16 +18,16 @@ class AudioModel {
   });
 
   factory AudioModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    return AudioModel(
-      audioId: data['audioId'] ?? '',
-      fileName: data['name'] ?? '',
-      fileUrl: data['fileUrl'] ?? '',
-      uploadedAt: data['uploadedAt'] ?? Timestamp.now(),
-      transcribed: data['transcribed'] ?? false,
-      transcriptText: data['transcriptText'],
-    );
-  }
+  Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+  return AudioModel(
+    audioId: doc.id, // Use document ID as audioId
+    fileName: data['name'] ?? '',
+    fileUrl: data['fileUrl'] ?? '',
+    uploadedAt: data['uploadedAt'] ?? Timestamp.now(),
+    transcribed: data['transcribed'] ?? false,
+    transcriptText: data['transcriptText'],
+  );
+}
 
   Map<String, dynamic> toFirestore() {
     return {
