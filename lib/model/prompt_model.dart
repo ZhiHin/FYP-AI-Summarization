@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PromptModel {
   Future<void> savePromptToFirebase(List<String> imageUrls,
-      List<String> promptTexts, String promptName) async {
+      List<String> promptTexts, String promptName, String type) async {
     // Save the prompt to Firebase
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -20,6 +20,7 @@ class PromptModel {
         'promptName': promptName,
         'imageUrls': imageUrls,
         'promptTexts': promptTexts,
+        'type': type,
         'timestamp': FieldValue.serverTimestamp(),
       });
       DocumentReference promptHistoryRef = FirebaseFirestore.instance

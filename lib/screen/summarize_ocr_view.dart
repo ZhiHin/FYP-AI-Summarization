@@ -1,4 +1,5 @@
 import 'package:ai_summarization/controller/summarize_ocr_control.dart';
+import 'package:ai_summarization/screen/utils.dart';
 import 'package:flutter/material.dart';
 
 class SummarizeOcrView extends StatefulWidget {
@@ -16,8 +17,9 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
   final SummarizeOcrControl _control = SummarizeOcrControl();
   final PageController _pageController = PageController();
   String _summarizationType = 'extractive'; // Default summarization type
-  List<String> _summaries = [];
-  List<String> _promptAndSummaryPair = [];
+  final String type = 'summary';
+  List<TextEditingController> _textControllers = [];
+  List<TextEditingController> _summaryControllers = [];
   bool _isLoading = false;
   bool _summarized = false;
   int _currentPage = 0;
@@ -25,7 +27,7 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
   @override
   void initState() {
     super.initState();
-    _summaries = List.filled(widget.detectedTexts.length, '');
+    _initializeControllers();
     _pageController.addListener(() {
       setState(() {
         _currentPage = _pageController.page!.round();
@@ -34,9 +36,22 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
     });
   }
 
+  void _initializeControllers() {
+    for (var text in widget.detectedTexts) {
+      _textControllers.add(TextEditingController(text: text));
+      _summaryControllers.add(TextEditingController());
+    }
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
+    for (var controller in _textControllers) {
+      controller.dispose();
+    }
+    for (var controller in _summaryControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -46,16 +61,12 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
       _summarized = true;
     });
 
-    _promptAndSummaryPair.clear(); // Clear the list before adding new pairs
-
     for (int i = 0; i < widget.detectedTexts.length; i++) {
       String summary = await _control.generateSummary(
           widget.detectedTexts[i], _summarizationType);
       if (mounted) {
         setState(() {
-          _summaries[i] = summary;
-          _promptAndSummaryPair.add(widget.detectedTexts[i]);
-          _promptAndSummaryPair.add(summary);
+          _summaryControllers[i].text = summary;
         });
       }
     }
@@ -67,6 +78,64 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
     }
   }
 
+  Future<void> _showSaveDialog() async {
+    TextEditingController _nameController = TextEditingController();
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // User must tap a button to dismiss the dialog
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Save'),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                const Text('Enter a name for the saved data:'),
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    hintText: 'Name',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('Save'),
+              onPressed: () async {
+                try {
+                  List<String> promptTexts =
+                      _textControllers.map((c) => c.text).toList();
+                  List<String> summaryTexts =
+                      _summaryControllers.map((c) => c.text).toList();
+                  List<String> combinedTexts = [];
+                  for (int i = 0; i < promptTexts.length; i++) {
+                    combinedTexts.add(promptTexts[i]);
+                    if (i < summaryTexts.length) {
+                      combinedTexts.add(summaryTexts[i]);
+                    }
+                  }
+                  await _control.saveSummary(widget.imageUrls, combinedTexts,
+                      _nameController.text, type);
+                  Navigator.of(context).pop();
+                  showSnackBar(context, "Summary saved successfully");
+                } catch (e) {
+                  showSnackBar(context, "Error saving summary: $e");
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     int totalPages =
@@ -75,6 +144,23 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Summarize OCR View'),
+        actions: [
+          if (_summarized)
+            PopupMenuButton<String>(
+              onSelected: (String result) {
+                if (result == 'save') {
+                  _showSaveDialog();
+                }
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'save',
+                  child: Text('Save'),
+                ),
+              ],
+              icon: const Icon(Icons.more_vert), // Three-dot menu icon
+            ),
+        ],
       ),
       body: Stack(
         children: [
@@ -132,9 +218,13 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
                                 // Display the detected text and summarization options
                                 Column(
                                   children: [
-                                    Text(
-                                      widget.detectedTexts[index],
-                                      style: const TextStyle(fontSize: 16.0),
+                                    TextField(
+                                      controller: _textControllers[index],
+                                      maxLines: null,
+                                      decoration: const InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        labelText: 'Detected Text',
+                                      ),
                                     ),
                                     const SizedBox(height: 16.0),
                                     ElevatedButton(
@@ -172,9 +262,13 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
                                   ),
                                   const SizedBox(height: 16.0),
                                   // Display the detected text
-                                  Text(
-                                    _promptAndSummaryPair[pairIndex * 2],
-                                    style: const TextStyle(fontSize: 16.0),
+                                  TextField(
+                                    controller: _textControllers[pairIndex],
+                                    maxLines: null,
+                                    decoration: const InputDecoration(
+                                      border: OutlineInputBorder(),
+                                      labelText: 'Detected Text',
+                                    ),
                                   ),
                                 ],
                               ),
@@ -196,11 +290,12 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
                                     ),
                                   ),
                                   const SizedBox(height: 8.0),
-                                  Text(
-                                    _promptAndSummaryPair[pairIndex * 2 + 1],
-                                    style: const TextStyle(
-                                      fontSize: 16.0,
-                                      color: Colors.blue,
+                                  TextField(
+                                    controller: _summaryControllers[pairIndex],
+                                    maxLines: null,
+                                    decoration: const InputDecoration(
+                                      border: OutlineInputBorder(),
+                                      labelText: 'Summary',
                                     ),
                                   ),
                                 ],
@@ -215,7 +310,7 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
                   onPageChanged: (index) {
                     setState(() {
                       _currentPage = index;
-                      print('Page changed to: $_currentPage'); // Debug print
+                      print('Page changed to: $_currentPage');
                     });
                     if (_pageController.hasClients &&
                         index == widget.imageUrls.length) {
