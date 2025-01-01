@@ -18,53 +18,59 @@ class AudioController {
   User? get currentUser => _auth.currentUser;
 
   Future<void> pickAndUploadAudioFile(BuildContext context) async {
-    if (currentUser == null) {
-      _showSnackBar(context, 'Please log in to upload audio');
-      return;
-    }
+  if (currentUser == null) {
+    _showSnackBar(context, 'Please log in to upload audio');
+    return;
+  }
 
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
-      allowMultiple: false,
-    );
+  FilePickerResult? result = await FilePicker.platform.pickFiles(
+    type: FileType.audio,
+    allowMultiple: false,
+  );
 
-    if (result != null) {
-      try {
-        File selectedFile = File(result.files.single.path!);
-        String fileName = result.files.single.name;
-        String audioId = DateTime.now().millisecondsSinceEpoch.toString();
+  if (result != null) {
+    try {
+      File selectedFile = File(result.files.single.path!);
+      String fileName = result.files.single.name;
+      String audioId = DateTime.now().millisecondsSinceEpoch.toString();
+      int fileSize = await selectedFile.length();
 
-        // Upload to Firebase Storage
-        Reference firebaseStorageRef =
-            _storage.ref().child('users/${currentUser!.uid}/audios/$fileName');
+      // Upload to Firebase Storage
+      Reference firebaseStorageRef =
+          _storage.ref().child('users/${currentUser!.uid}/audios/$fileName');
 
-        UploadTask uploadTask = firebaseStorageRef.putFile(selectedFile);
-        TaskSnapshot taskSnapshot = await uploadTask;
-        String fileUrl = await taskSnapshot.ref.getDownloadURL();
+      UploadTask uploadTask = firebaseStorageRef.putFile(selectedFile);
+      TaskSnapshot taskSnapshot = await uploadTask;
+      String fileUrl = await taskSnapshot.ref.getDownloadURL();
 
-        // Create AudioModel
-        AudioModel audioModel = AudioModel(
-          audioId: audioId,
-          fileName: fileName,
-          fileUrl: fileUrl,
-          uploadedAt: Timestamp.now(),
-          transcribed: false,
-        );
+      // Create document data
+      Map<String, dynamic> audioData = {
+        'name': fileName,
+        'description': '',
+        'size': fileSize,
+        'uploadedAt': Timestamp.now(),
+        'fileUrl': fileUrl,
+        'folderId': null,
+        'documentType': 'audios',
+        'audioId': audioId,
+        'transcribed': false,
+        'transcriptText': null,
+      };
 
-        // Save to Firestore
-        await _firestore
-            .collection('users')
-            .doc(currentUser!.uid)
-            .collection('audios')
-            .doc(audioId)
-            .set(audioModel.toFirestore());
+      // Save to Firestore
+      await _firestore
+          .collection('users')
+          .doc(currentUser!.uid)
+          .collection('audios')
+          .doc(audioId)
+          .set(audioData);
 
-        _showSnackBar(context, 'Audio uploaded successfully');
-      } catch (e) {
-        _showSnackBar(context, 'Upload failed: $e');
-      }
+      _showSnackBar(context, 'Audio uploaded successfully');
+    } catch (e) {
+      _showSnackBar(context, 'Upload failed: $e');
     }
   }
+}
 
   Future<void> deleteAudio(BuildContext context, String audioId, String fileUrl,
       bool Function() isMounted) async {
