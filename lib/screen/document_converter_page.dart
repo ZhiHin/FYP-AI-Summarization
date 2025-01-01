@@ -65,7 +65,7 @@ class _DocumentConverterViewState extends State<DocumentConverterPage> {
             ),
             ListTile(
               leading: Icon(Icons.cloud),
-              title: const Text('Select from Firebase'),
+              title: const Text('Select from Documents'),
               onTap: () => Navigator.pop(context, 'firebase'),
             ),
           ],
