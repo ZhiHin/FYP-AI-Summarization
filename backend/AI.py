@@ -4,10 +4,10 @@ import tempfile
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-import numpy as np
 from pkg_resources import resource_filename
 from pydantic import BaseModel
-from transformers import AutoModel, AutoTokenizer, pipeline, AutoModelForSeq2SeqLM, CLIPImageProcessor
+import spacy
+from transformers import AutoModel, AutoTokenizer, pipeline, AutoModelForSeq2SeqLM
 from PIL import Image, ImageFilter, ImageOps
 import requests
 from io import BytesIO
@@ -18,10 +18,12 @@ import re
 import os
 import time
 from enum import Enum
+from symspellpy.symspellpy import SymSpell
 import spacy
-from google.cloud import vision
+from happytransformer import HappyTextToText, TTSettings
 import cv2
 import numpy as np
+from google.cloud import vision
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +33,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "service_account_token.json"
 client = vision.ImageAnnotatorClient()
+
 # Enable CORS for all routes
 app.add_middleware(
     CORSMiddleware,
@@ -72,7 +75,7 @@ except Exception as e:
     asr_pipe = None
 
 class OCRRequest(BaseModel):
-    image: UploadFile = File(...),
+    image_url: str
     option: str 
     
 class SummarizationType(str, Enum):
@@ -96,8 +99,19 @@ def calculate_dynamic_max_length(text_length: int, min_length: int = 50, max_len
     """Calculate a flexible max_length based on the input text length."""
     return int(min(max(text_length * 0.1, min_length), max_length))
 
+# Initialize the tokenizer for chunking
+try:
+    tokenizer = AutoTokenizer.from_pretrained("spacemanidol/flan-t5-large-website-summarizer", legacy=False)
+    logger.info("Tokenizer for chunking loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading tokenizer for chunking: {e}")
+    tokenizer = None
+
 # Chunking function for large text
 def chunk_text(text: str, chunk_size: int = 1000) -> list:
+    if not tokenizer:
+        raise ValueError("Tokenizer is not loaded")
+
     words = text.split()
     chunks = []
     current_chunk = []
@@ -214,7 +228,6 @@ def structure_summary(summary: str) -> str:
 
     return structured_summary
 
-
 # OCR Endpoint
 def process_ocr_output(text):
     text = text.strip()
@@ -235,32 +248,6 @@ def process_ocr_output(text):
     text = re.sub(r'\n\s+', '\n', text)
     
     return text
-
-def preprocess_image(image_path):
-    image = cv2.imread(image_path)
-    image_cv = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    
-    # Resize the image to a fixed size (e.g., 1024x1024)
-    image_cv = cv2.resize(image_cv, (1024, 1024), interpolation=cv2.INTER_LANCZOS4)
-    
-    # Convert to grayscale
-    gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
-    
-    # Remove shadows
-    dilated_img = cv2.dilate(gray, np.ones((7,7), np.uint8))
-    bg_img = cv2.medianBlur(dilated_img, 21)
-    diff_img = 255 - cv2.absdiff(gray, bg_img)
-    norm_img = cv2.normalize(diff_img, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
-    
-    # Thresholding to get binary image
-    _, binary_img = cv2.threshold(norm_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    # Display the image
-    cv2.imshow('Preprocessed Image', binary_img)
-    cv2.waitKey(0)  # Wait for a key press to close the window
-    cv2.destroyAllWindows()  # Close the window
-
-    return binary_img
 
 @app.post("/format")
 async def perform_ocr(image: UploadFile = File(...)):
@@ -313,14 +300,6 @@ async def perform_ocr(image: UploadFile = File(...)):
 async def extract_text(file: UploadFile = File(...)):
     """Extract text from uploaded PDF file."""
     start_time = time.time()
-    # ...existing code...
-    
-    
-# PDF Text Extraction Endpoint
-@app.post("/extract_text")
-async def extract_text(file: UploadFile = File(...)):
-    """Extract text from uploaded PDF file."""
-    start_time = time.time()
     
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
@@ -347,15 +326,6 @@ async def extract_text(file: UploadFile = File(...)):
         "processing_time": processing_time
     })
 
-# Summarization Endpoint
-#class SummarizationType(str, Enum):
-#   abstractive = "abstractive"
-#   extractive = "extractive"
-
-#class SummarizeRequest(BaseModel):
-#   text: str 
-#   max_length: int = 150
-#  summary_type: SummarizationType
 @app.post("/summarize")
 async def summarize_text(request: SummarizeRequest):
     """Summarize text using FLAN-T5 model or extractive model with flexible length and structured display."""
