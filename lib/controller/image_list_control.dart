@@ -78,6 +78,7 @@ class ImageListControl {
 
   Future<void> uploadAllImagesToFirebase(
       BuildContext context, List<XFile> images) async {
+    showSnackBar(context, 'Uploading images...');
     for (XFile image in images) {
       try {
         await _imageModel.uploadImageToFirebase(context, image);

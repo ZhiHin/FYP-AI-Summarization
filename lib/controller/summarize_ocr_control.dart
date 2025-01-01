@@ -11,7 +11,7 @@ class SummarizeOcrControl {
       String text, String selectedSummarizationTechnique) async {
     final response = await http
         .post(
-          Uri.parse('http://192.168.1.106:8000/summarize'),
+          Uri.parse('http://192.168.0.171:8000/summarize'),
           headers: {'Content-Type': 'application/json'},
           body: json.encode({
             'text': text,

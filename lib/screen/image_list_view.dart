@@ -246,9 +246,8 @@ class _ImageListViewState extends State<ImageListView> {
                 try {
                   await widget.control
                       .uploadAllImagesToFirebase(context, widget.images);
-                  showSnackBar(context, 'Uploading images...');
                   setState(() {
-                    widget.images.clear(); // Clear the images list
+                    widget.images.clear();
                   });
                 } catch (e) {
                   showSnackBar(context, 'Failed to upload images: $e');
@@ -256,12 +255,11 @@ class _ImageListViewState extends State<ImageListView> {
               },
               icon: const Icon(
                 Icons.cloud_upload,
-                color: Colors.white, // Set the icon color to white
+                color: Colors.white,
               ),
               label: const Text(
                 'Upload All',
-                style:
-                    TextStyle(color: Colors.white), // Set text color to white
+                style: TextStyle(color: Colors.white),
               ),
               backgroundColor: Theme.of(context).primaryColor,
             )
