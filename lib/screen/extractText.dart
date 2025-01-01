@@ -332,49 +332,64 @@ class _ExtractScreenState extends State<ExtractScreen>
     }
   }
 
-  List<String> _splitTextIntoPages(
-    String text,
-    pw.TextStyle style,
-    double pageWidth,
-    double pageHeight,
-  ) {
-    final pages = <String>[];
-    String remainingText = text.trim();
+ List<String> _splitTextIntoPages(
+  String text,
+  pw.TextStyle style,
+  double pageWidth,
+  double pageHeight,
+) {
+  final pages = <String>[];
+  String remainingText = text.trim();
 
-    final lineHeight = style.fontSize! * 1.5;
-    final availableHeight = pageHeight - 100;
-    final linesPerPage = (availableHeight / lineHeight).floor();
-    final charsPerLine = (pageWidth / (style.fontSize! * 0.6)).floor();
-    final estimatedCharsPerPage = linesPerPage * charsPerLine;
+  final lineHeight = style.fontSize! * style.lineSpacing!;
+  final availableHeight = pageHeight - 100; // Adjust for margins, headers, footers
+  final maxLinesPerPage = (availableHeight / lineHeight).floor();
 
-    while (remainingText.isNotEmpty) {
-      String pageText = remainingText.length > estimatedCharsPerPage
-          ? remainingText.substring(0, estimatedCharsPerPage)
-          : remainingText;
+  while (remainingText.isNotEmpty) {
+    // Estimate the number of characters that can fit on one page
+    final charsPerLine = (pageWidth / (style.fontSize! * 0.5)).floor();
+    final estimatedCharsPerPage = charsPerLine * maxLinesPerPage;
 
-      final breakStrategies = [
-        () => pageText.lastIndexOf('\n\n'),
-        () => pageText.lastIndexOf('\n'),
-        () => pageText.lastIndexOf(' ', (pageText.length * 0.75).toInt()),
-        () => pageText.lastIndexOf(' '),
-      ];
+    // Extract a chunk of text for this page
+    String pageText = remainingText.length > estimatedCharsPerPage
+        ? remainingText.substring(0, estimatedCharsPerPage)
+        : remainingText;
 
-      int breakPoint = -1;
-      for (var strategy in breakStrategies) {
-        breakPoint = strategy();
-        if (breakPoint != -1 && breakPoint > 0) {
-          pageText = pageText.substring(0, breakPoint);
-          break;
-        }
-      }
-
-      pageText = pageText.trimRight();
-      pages.add(pageText);
-      remainingText = remainingText.substring(pageText.length).trimLeft();
+    // Try to find a good break point
+    int breakPoint = _findBreakPoint(pageText);
+    if (breakPoint > 0) {
+      pageText = pageText.substring(0, breakPoint).trimRight();
     }
 
-    return pages;
+    // Add the text for this page
+    pages.add(pageText);
+
+    // Remove the processed content
+    remainingText = remainingText.substring(pageText.length).trimLeft();
   }
+
+  return pages;
+}
+
+int _findBreakPoint(String text) {
+  // Strategies to find the best split point
+  final breakStrategies = [
+    () => text.lastIndexOf('\n\n'), // Double line break
+    () => text.lastIndexOf('\n'),  // Single line break
+    () => text.lastIndexOf('. '),  // Sentence boundary
+    () => text.lastIndexOf(' ', (text.length * 0.75).toInt()), // Word boundary
+    () => text.lastIndexOf(' '),   // Last word boundary
+  ];
+
+  for (var strategy in breakStrategies) {
+    int breakPoint = strategy();
+    if (breakPoint != -1 && breakPoint > 0) {
+      return breakPoint;
+    }
+  }
+  return -1; // No valid break point found
+}
+
 
   Future<void> _copyToClipboard(String text, String label) async {
     await Clipboard.setData(ClipboardData(text: text));

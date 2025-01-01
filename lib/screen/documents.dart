@@ -594,9 +594,9 @@ class _DocumentsPageState extends State<DocumentsPage> {
                 'documentType': 'audio',
                 'audioId': DateTime.now()
                     .millisecondsSinceEpoch
-                    .toString(), // Add audioId
-                'transcribed': false, // Add transcription status
-                'transcriptText': null, // Add transcript field
+                    .toString(), 
+                'transcribed': false,
+                'transcriptText': null, 
               }
             : {
                 'name': fileName,
@@ -1026,8 +1026,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                                     doc.id,
                                     data['fileUrl'],
                                     fileName,
-                                    _getCollectionForDoc(
-                                        data) // Pass the collection name
+                                    _getCollectionForDoc(data) 
                                     );
                                 break;
                             }
