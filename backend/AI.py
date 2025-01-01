@@ -4,10 +4,10 @@ import tempfile
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+import numpy as np
 from pkg_resources import resource_filename
 from pydantic import BaseModel
-import spacy
-from transformers import AutoModel, AutoTokenizer, pipeline, AutoModelForSeq2SeqLM
+from transformers import AutoModel, AutoTokenizer, pipeline, AutoModelForSeq2SeqLM, CLIPImageProcessor
 from PIL import Image, ImageFilter, ImageOps
 import requests
 from io import BytesIO
@@ -18,9 +18,8 @@ import re
 import os
 import time
 from enum import Enum
-from symspellpy.symspellpy import SymSpell
 import spacy
-from happytransformer import HappyTextToText, TTSettings
+from google.cloud import vision
 import cv2
 import numpy as np
 
@@ -30,7 +29,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI()
-
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "service_account_token.json"
+client = vision.ImageAnnotatorClient()
 # Enable CORS for all routes
 app.add_middleware(
     CORSMiddleware,
@@ -39,75 +39,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-#Initialize SymSpell 
-"""
-sym_spell = SymSpell(max_dictionary_edit_distance=15, prefix_length=16)
-dictionary_path = resource_filename('symspellpy', 'frequency_dictionary_en_82_765.txt')
-bigram_path = resource_filename('symspellpy', 'frequency_bigramdictionary_en_243_342.txt')
-dictionary_pickle_path = resource_filename('symspellpy', 'symspelldictionary.pkl')
-try:
-    start_time = time.time()
-    if not os.path.exists(dictionary_pickle_path):
-        logging.info("SymSpell pickle not found, loading dictionary from text file")
-        if sym_spell.load_dictionary(dictionary_path, term_index=0, count_index=1):
-            logging.info("SymSpell dictionary loaded successfully from text file")
-            sym_spell.save_pickle(dictionary_pickle_path)
-            logging.info("SymSpell dictionary saved to pickle file")
-        else:
-            logging.error("Dictionary file not found")
-    else:
-        sym_spell.load_pickle(dictionary_pickle_path)
-        end_time = time.time()
-        loading_time = end_time - start_time
-        logging.info(f"SymSpell dictionary loaded successfully from pickle file in {loading_time:.2f} seconds")
-except Exception as e:
-    logging.error(f"Error loading dictionary: {e}")
-
-try:
-    if sym_spell.load_bigram_dictionary(bigram_path, term_index=0, count_index=2):
-        logging.info("SymSpell bigram dictionary loaded successfully")
-    else:
-        logging.error("Bigram dictionary file not found")
-except Exception as e:
-    logging.error(f"Error loading bigram dictionary: {e}")
-
-# Load spacy model for NLP
-try:
-    nlp = spacy.load("en_core_web_sm")
-    logging.info("spaCy model loaded successfully")
-except Exception as e:
-    logging.error(f"Error loading spaCy model: {e}")
-"""
-
-# Initialize the OCR model (GOT-OCR2.0)
-try:
-    tokenizer = AutoTokenizer.from_pretrained('ucaslcl/GOT-OCR2_0', trust_remote_code=True)
-    model = AutoModel.from_pretrained('ucaslcl/GOT-OCR2_0', trust_remote_code=True, low_cpu_mem_usage=True, device_map='cuda', use_safetensors=True, pad_token_id=tokenizer.eos_token_id)
-    model = model.eval().cuda()
-    logger.info("GOT OCR 2.0 model loaded successfully")
-except Exception as e:
-    logger.error(f"Error loading OCR model: {e}")
-    model = None
-
-# Initialize the grammar correcter (T5-Base-Grammar-Correction)
-try:
-    happy_tt = HappyTextToText("T5", "vennify/t5-base-grammar-correction")
-    args = TTSettings(num_beams=5, min_length=1)
-    logger.info("T5-Base Grammar Correction loaded successfully")
-except Exception as e:
-    logger.error(f"Error loading T5-Base Grammar Correction model: {e}")
-    happy_tt = None
-
-# Initialize the advanced spell checker (T5-Base-SpellChecker)
-try:
-    tokenizer2 = AutoTokenizer.from_pretrained("Bhuvana/t5-base-spellchecker", legacy=False)
-    model2 = AutoModelForSeq2SeqLM.from_pretrained("Bhuvana/t5-base-spellchecker")
-    logger.info("T5-Base Spellchecker loaded successfully")
-except Exception as e:
-    logger.error(f"Error loading T5-Base Spellchecker Correction model: {e}")
-    model2 = None
 
 # Initialize the abstractive summarization pipeline (FLAN-T5)
 try:
@@ -141,7 +72,7 @@ except Exception as e:
     asr_pipe = None
 
 class OCRRequest(BaseModel):
-    image_url: str
+    image: UploadFile = File(...),
     option: str 
     
 class SummarizationType(str, Enum):
@@ -285,120 +216,29 @@ def structure_summary(summary: str) -> str:
 
 
 # OCR Endpoint
-
-def correct_text(text: str) -> str:
-    """Correct text using SymSpell and retain appropriate newline characters."""
-    # Remove extra whitespace but retain newlines
+def process_ocr_output(text):
+    text = text.strip()
+    
+    # Remove multiple spaces
+    text = re.sub(r'\s+', ' ', text)
+    
+    # Remove tabs and extra spaces
     text = re.sub(r'[ \t]+', ' ', text).strip()
-    logging.info(f"Text after removing extra whitespace: {text}")
     
-    # Remove hyphenation at line breaks
-    text = re.sub(r'-\s*\n\s*', '', text)
-    logging.info(f"Text after removing hyphenation: {text}")
+    # Add space after commas if not present
+    text = re.sub(r'([,])(\S)', r'\1 \2', text)
     
-    # Add space after every comma and period
-    text = re.sub(r'([,.])(\S)', r'\1 \2', text)
-    logging.info(f"Text after adding space after commas and periods: {text}")
-
-    # Remove newline if the character before is not a period or question mark
-    text = re.sub(r'(?<![?.])\n', ' ', text)
-    logging.info(f"Text after handling newlines: {text}")
+    # Add new line after every special character except for commas
+    text = re.sub(r'([.!?;:])', r'\1\n', text)
     
-    # Split text by newlines to preserve them
-    paragraphs = text.split('\n')
-    logging.info(f"Text split into paragraphs: {paragraphs}")
+    # Remove space if character before is a newline
+    text = re.sub(r'\n\s+', '\n', text)
     
-    corrected_paragraphs = []
-    for paragraph in paragraphs:
-        # Use spaCy to separate sentences
-        doc = nlp(paragraph)
-        sentences = [sent.text for sent in doc.sents]
-        logging.info(f"Sentences identified by spaCy: {sentences}")
-        
-        # Correct each sentence using SymSpell
-        corrected_sentences = []
-        for sentence in sentences:
-            if re.search(r'\d', sentence):
-                # Skip correction for sentences containing numbers
-                corrected_sentences.append(sentence)
-                logging.info(f"Skipped correction for sentence with numbers: {sentence}")
-            else:
-                #suggestions = sym_spell.lookup_compound(sentence, max_edit_distance=12)
-                #corrected_sentence = suggestions[0].term.capitalize()
-                corrected_sentences.append(sentence)
-        # Combine corrected sentences
-        corrected_paragraph = '. '.join(corrected_sentences)
-        corrected_paragraph = enhance_text_with_t5(corrected_paragraph)
-        corrected_paragraphs.append(corrected_paragraph)
-    
-    # Combine corrected paragraphs, retaining newlines
-    corrected_text = '\n\n'.join(corrected_paragraphs)
-    
-    return corrected_text
+    return text
 
-def process_text_in_chunks(text: str, process_func, chunk_size: int = 128) -> str:
-    """Process text in chunks using the provided processing function."""
-    words = text.split()
-    chunks = []
-    current_chunk = []
-
-    for word in words:
-        current_chunk.append(word)
-        if len(' '.join(current_chunk)) > chunk_size:
-            chunks.append(' '.join(current_chunk[:-1]))
-            current_chunk = [word]
-
-    if current_chunk:
-        chunks.append(' '.join(current_chunk))
-    logging.info(f"Chunks to be processed: {chunks}")
-
-    processed_chunks = []
-    for chunk in chunks:
-        processed_chunk = replace_mispelled_words(chunk)
-        processed_chunk = process_func(chunk)
-        logging.info(f"Processed chunk: {processed_chunk}")
-        processed_chunks.append(processed_chunk)    
-    return ' '.join(processed_chunks)
-
-def replace_mispelled_words(chunk):
-    input_ids = tokenizer2.encode("" + chunk, return_tensors='pt')
-    sample_output = model2.generate(
-        input_ids,
-        do_sample=True,
-        max_length=50,
-        top_p=0.99,
-        num_return_sequences=1
-    )
-    res = tokenizer2.decode(sample_output[0], skip_special_tokens=True)
-    return res
-
-def enhance_text_with_t5(text: str) -> str:
-    """Enhance text using the T5-Base model."""
-    if happy_tt:
-        def process_chunk(chunk):
-            result = happy_tt.generate_text("grammar: " + chunk, args=args)
-            return result.text
-
-        enhanced_text = process_text_in_chunks(text, process_chunk)
-        logging.info(f"Enhanced text: {enhanced_text}")
-        return enhanced_text
-    else:
-        logging.warning("T5-Base model not available for text enhancement.")
-        return text
-
-def load_image(image_file):
-    if isinstance(image_file, str) and (image_file.startswith('http') or image_file.startswith('https')):
-        # Load image from URL
-        response = requests.get(image_file)
-        image = Image.open(BytesIO(response.content)).convert('RGB')
-    else:
-        # Load image from local file path
-        image = Image.open(image_file).convert('RGB')
-    return image
-
-def preprocess_image(image):
-    # Convert PIL image to OpenCV format
-    image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+def preprocess_image(image_path):
+    image = cv2.imread(image_path)
+    image_cv = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
     # Resize the image to a fixed size (e.g., 1024x1024)
     image_cv = cv2.resize(image_cv, (1024, 1024), interpolation=cv2.INTER_LANCZOS4)
@@ -406,94 +246,76 @@ def preprocess_image(image):
     # Convert to grayscale
     gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
     
-    # Perform Otsu threshold
-    ret, thresh1 = cv2.threshold(gray, 128, 255, cv2.THRESH_OTSU | cv2.THRESH_BINARY_INV)
+    # Remove shadows
+    dilated_img = cv2.dilate(gray, np.ones((7,7), np.uint8))
+    bg_img = cv2.medianBlur(dilated_img, 21)
+    diff_img = 255 - cv2.absdiff(gray, bg_img)
+    norm_img = cv2.normalize(diff_img, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX)
     
-    # Choosing the right kernel
-    rect_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
-    dilation = cv2.dilate(thresh1, rect_kernel, iterations=1)
+    # Thresholding to get binary image
+    _, binary_img = cv2.threshold(norm_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
-    # Find contours on the dilated image
-    contours, _ = cv2.findContours(dilation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    
-    # Process and filter bounding boxes
-    bounding_boxes = []
-    min_area = 1000
-    min_width = 100  # Minimum width for a text region
-    
-    for contour in contours:
-        x, y, w, h = cv2.boundingRect(contour)
-        aspect_ratio = w / float(h)
-        
-        # Filter boxes based on size and aspect ratio
-        if w * h > min_area and w > min_width and aspect_ratio > 2:
-            x = max(0, x - 10)
-            y = max(0, y - 5)
-            w = min(image_cv.shape[1] - x, w + 20)
-            h = min(image_cv.shape[0] - y, h + 10)
-            
-            cv2.rectangle(image_cv, (x, y), (x + w, y + h), (0, 0, 255), 2)
-            bounding_boxes.append([x, y, x + w, y + h])
-    
-    # Sort boxes top to bottom
-    bounding_boxes.sort(key=lambda box: box[1])
-    
-    # Print out bounding boxes
-    print("Bounding boxes:", bounding_boxes)
-    
-    # Display the image with bounding boxes
-    cv2.imshow('Image with Bounding Boxes', image_cv)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    
-    # Convert back to PIL format
-    image_pil = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_GRAY2RGB))
-    return image_pil, bounding_boxes
+    # Display the image
+    cv2.imshow('Preprocessed Image', binary_img)
+    cv2.waitKey(0)  # Wait for a key press to close the window
+    cv2.destroyAllWindows()  # Close the window
 
+    return binary_img
 
 @app.post("/format")
-async def perform_ocr(request: OCRRequest):
+async def perform_ocr(image: UploadFile = File(...)):
     try:
-        logging.info(f"Processing image from URL: {request.image_url}")
-        image = load_image(request.image_url)
+        temp_dir = "temp_images"
+        os.makedirs(temp_dir, exist_ok=True)
         
+        file_location = f"{temp_dir}/{image.filename}"
+    
+        with open(file_location, "wb+") as file_object:
+            file_object.write(await image.read())
+
+        # Load the image into memory
+        with open(file_location, "rb") as image_file:
+            content = image_file.read()
+
+        image = vision.Image(content=content)
+        response = client.document_text_detection(image=image)
+        text = response.text_annotations[0].description
+        text = process_ocr_output(text)
         
-        # Save the image to a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-            image.save(temp_file, format="JPEG")
-            temp_file_path = temp_file.name
-        try:
-            if request.option == "format":
-                logging.info(f"Processing image from URL: {request.image_url}")
-                res = model.chat_crop(tokenizer, request.image_url, ocr_type='format')
-                #res = correct_text(res)
-                return {"generated_text": res}
-            elif request.option == "fine-grained":
-                # Convert bounding boxes to a string format
-                image, bounding_boxes = preprocess_image(image)
-                ocr_boxes = [f"[{x},{y},{x2},{y2}]" for x, y, x2, y2 in bounding_boxes]
-                print(ocr_boxes)
-                results = []
-                for box in ocr_boxes:
-                    res = model.chat(tokenizer, temp_file_path, ocr_type='format', ocr_box=box)
-                    print(res)
-                    # Remove \text{} tags but keep the text inside
-                    cleaned_text = re.sub(r'\\text\{(.*?)\}', r'\1', res)
-                    results.append(cleaned_text)
-                
-                # Combine results
-                combined_result = " ".join(results)
-                return {"generated_text": combined_result}
-        finally:
-            # Clean up the temporary file
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
+        for page in response.full_text_annotation.pages:
+            for block in page.blocks:
+                print('\nBlock confidence: {}\n'.format(block.confidence))
+
+                for paragraph in block.paragraphs:
+                    print('Paragraph confidence: {}'.format(
+                        paragraph.confidence))
+
+                    for word in paragraph.words:
+                        word_text = ''.join([
+                            symbol.text for symbol in word.symbols
+                        ])
+                        print('Word text: {} (confidence: {})'.format(
+                            word_text, word.confidence))
+
+                        for symbol in word.symbols:
+                            print('\tSymbol: {} (confidence: {})'.format(
+                                symbol.text, symbol.confidence))
+        # Clean up
+        os.remove(file_location)
+
+        return {"extracted_text": text}
     except Exception as e:
         logging.error(f"Error processing image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
+# PDF Text Extraction Endpoint
+@app.post("/extract_text")
+async def extract_text(file: UploadFile = File(...)):
+    """Extract text from uploaded PDF file."""
+    start_time = time.time()
+    # ...existing code...
+    
+    
 # PDF Text Extraction Endpoint
 @app.post("/extract_text")
 async def extract_text(file: UploadFile = File(...)):

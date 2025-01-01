@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:ai_summarization/screen/crop_image_view.dart';
 import 'package:ai_summarization/screen/image_zoom.dart';
 import 'package:flutter/material.dart';
 import 'package:ai_summarization/controller/gallery_tool_control.dart';
@@ -46,14 +47,14 @@ class _GalleryViewState extends State<GalleryView> {
         _selectedIndices.map((index) => _imageData[index]).toList();
     List<String> selectedImageUrls =
         selectedImages.map((image) => image['fileUrl'] as String).toList();
-        print(selectedImageUrls);
+    print(selectedImageUrls);
     if (selectedImages.isEmpty) {
       return;
     }
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => DetectTextView(imageUrls: selectedImageUrls),
+        builder: (context) => CropImagePage(imageUrls: selectedImageUrls),
       ),
     );
   }
@@ -86,7 +87,7 @@ class _GalleryViewState extends State<GalleryView> {
                 : ListView.builder(
                     itemCount: _imageData.length,
                     itemBuilder: (context, index) {
-                      String imageUrl = _imageData[index]['fileUrl']!;
+                      String imageUrl = _imageData[index]['imageUrl']!;
                       String imageName = _imageData[index]['name']!;
                       bool isSelected = _selectedIndices.contains(index);
                       return GestureDetector(

@@ -317,7 +317,7 @@ class _PromptEditViewState extends State<PromptEditView> {
                     child: GestureDetector(
                       onTap: () {
                         _pageController.previousPage(
-                          duration: Duration(milliseconds: 300),
+                          duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         );
                       },
@@ -335,7 +335,7 @@ class _PromptEditViewState extends State<PromptEditView> {
                     child: GestureDetector(
                       onTap: () {
                         _pageController.nextPage(
-                          duration: Duration(milliseconds: 300),
+                          duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         );
                       },

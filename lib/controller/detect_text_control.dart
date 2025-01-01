@@ -22,17 +22,27 @@ class DetectTextControl {
   }
 
   Future<String> generateFormatTextFromImage(
-      String imageUrl, String selectedOption) async {
-    final response = await http.post(
-      Uri.parse('http://192.168.1.106:8000/format'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'image_url': imageUrl, 'option': selectedOption}),
-    );
+      String imagePath, String selectedOption) async {
+    var request = http.MultipartRequest(
+        'POST', Uri.parse('http://192.168.0.171:8000/format'));
+
+    // Add file
+    request.files.add(await http.MultipartFile.fromPath(
+      'image',
+      imagePath,
+    ));
+
+    // Add other fields
+    request.fields['option'] = selectedOption;
+
+    var response = await request.send();
+    var responseData = await response.stream.bytesToString();
+
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['generated_text'];
+      final data = jsonDecode(responseData);
+      return data['extracted_text'];
     } else {
-      throw Exception('Failed to generate text');
+      throw Exception('Failed to generate text: ${response.statusCode}');
     }
   }
 

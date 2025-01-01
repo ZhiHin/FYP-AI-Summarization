@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 
 class DetectTextView extends StatefulWidget {
   final List<String> imageUrls;
+  final List<String> croppedImagesPath;
 
-  const DetectTextView({super.key, required this.imageUrls});
+  const DetectTextView(
+      {super.key, required this.croppedImagesPath, required this.imageUrls});
 
   @override
   _DetectTextViewState createState() => _DetectTextViewState();
@@ -22,6 +24,7 @@ class _DetectTextViewState extends State<DetectTextView> {
   String _selectedLanguage = 'en';
   String _selectedOption = 'format'; // Default selected option
   String type = 'prompt';
+
   @override
   void initState() {
     super.initState();
@@ -29,9 +32,9 @@ class _DetectTextViewState extends State<DetectTextView> {
   }
 
   Future<void> _initializeTextControllers() async {
-    for (var url in widget.imageUrls) {
-      final text =
-          await _control.generateFormatTextFromImage(url, _selectedOption);
+    for (var imagePath in widget.croppedImagesPath) {
+      final text = await _control.generateFormatTextFromImage(
+          imagePath, _selectedOption);
       _textControllers.add(TextEditingController(text: text));
     }
     if (mounted) {
@@ -71,28 +74,6 @@ class _DetectTextViewState extends State<DetectTextView> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      DropdownButton<String>(
-                        value: _selectedOption,
-                        onChanged: (String? newValue) {
-                          setState(() {
-                            _selectedOption = newValue!;
-                            _textControllers.clear();
-                            _initializeTextControllers();
-                          });
-                        },
-                        items: <String>['format', 'fine-grained']
-                            .map<DropdownMenuItem<String>>((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: TextField(
@@ -157,14 +138,16 @@ class _DetectTextViewState extends State<DetectTextView> {
   }
 
   Future<void> _showSaveDialog() async {
-    TextEditingController _nameController = TextEditingController();
+    TextEditingController nameController = TextEditingController();
     List<String> detectedTexts = [];
     for (var controller in _textControllers) {
       detectedTexts.add(controller.text);
     }
+    bool appendToCurrentPrompts = false;
+
     return showDialog<void>(
       context: context,
-      barrierDismissible: false, // User must tap a button to dismiss the dialog
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Save'),
@@ -173,10 +156,24 @@ class _DetectTextViewState extends State<DetectTextView> {
               children: <Widget>[
                 const Text('Enter a name for the saved data:'),
                 TextField(
-                  controller: _nameController,
+                  controller: nameController,
                   decoration: const InputDecoration(
                     hintText: 'Name',
                   ),
+                ),
+                const SizedBox(height: 16.0),
+                Row(
+                  children: [
+                    const Text('Append to current prompts'),
+                    Switch(
+                      value: appendToCurrentPrompts,
+                      onChanged: (bool value) {
+                        setState(() {
+                          appendToCurrentPrompts = value;
+                        });
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -193,7 +190,7 @@ class _DetectTextViewState extends State<DetectTextView> {
               onPressed: () {
                 try {
                   _control.saveOriginal(widget.imageUrls, detectedTexts,
-                      _nameController.text, type);
+                      nameController.text, type);
                   Navigator.of(context).pop();
                   showSnackBar(context, "Prompt saved successfully");
                 } catch (e) {
