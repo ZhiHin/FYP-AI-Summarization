@@ -400,26 +400,6 @@ class _ExtractScreenState extends State<ExtractScreen>
   return pages;
 }
 
-int _findBreakPoint(String text) {
-  // Strategies to find the best split point
-  final breakStrategies = [
-    () => text.lastIndexOf('\n\n'), // Double line break
-    () => text.lastIndexOf('\n'),  // Single line break
-    () => text.lastIndexOf('. '),  // Sentence boundary
-    () => text.lastIndexOf(' ', (text.length * 0.75).toInt()), // Word boundary
-    () => text.lastIndexOf(' '),   // Last word boundary
-  ];
-
-  for (var strategy in breakStrategies) {
-    int breakPoint = strategy();
-    if (breakPoint != -1 && breakPoint > 0) {
-      return breakPoint;
-    }
-  }
-  return -1; // No valid break point found
-}
-
-
   Future<void> _copyToClipboard(String text, String label) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
