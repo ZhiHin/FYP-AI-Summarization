@@ -25,7 +25,6 @@ import cv2
 import numpy as np
 from google.cloud import vision
 from google.cloud import speech
-import asyncio
 from pydub import AudioSegment
 from pydub import AudioSegment
 from pydub.utils import make_chunks

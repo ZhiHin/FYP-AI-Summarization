@@ -31,6 +31,7 @@ class PromptModel {
 
       await promptHistoryRef.set({
         'promptId': docRef.id,
+        'fileUrls': imageUrls,
         'updatedTexts': promptTexts,
         'timestamp': FieldValue.serverTimestamp(),
       });
@@ -60,7 +61,7 @@ class PromptModel {
           .doc(user.uid)
           .collection('promptHistory')
           .doc();
-
+//TODO: Add fileUrls to here
       await promptHistoryRef.set({
         'promptId': promptId,
         'updatedTexts': promptTexts,
@@ -91,6 +92,7 @@ class PromptModel {
       return snapshot.docs.map((doc) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
         data['promptId'] = doc.id;
+        print('date ${data['timestamp']}');
         return data;
       }).toList();
     } catch (e) {
@@ -135,6 +137,7 @@ class PromptModel {
       return [];
     }
     try {
+      //TODO: Add fileUrls to here
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -229,5 +232,50 @@ class PromptModel {
         .collection('prompts')
         .doc(promptId)
         .update({'promptName': newName});
+  }
+
+  Future<void> appendPagesToPrompt(
+      String promptId, List<String> newTexts, List<String> newUrls) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('User not logged in');
+      return;
+    }
+    try {
+      DocumentReference docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('prompts')
+          .doc(promptId);
+      DocumentReference promptHistoryRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('promptHistory')
+          .doc();
+
+      DocumentSnapshot doc = await docRef.get();
+      if (doc.exists) {
+        List<String> existingTexts = List<String>.from(doc['promptTexts']);
+        List<String> existingUrls = List<String>.from(doc['fileUrls']);
+        existingTexts.addAll(newTexts);
+        existingUrls.addAll(newUrls);
+        await docRef.update({
+          'promptTexts': existingTexts,
+          'fileUrls': existingUrls,
+          'timestamp': FieldValue.serverTimestamp()
+        });
+        await promptHistoryRef.set({
+          'promptId': promptId,
+          'updatedTexts': existingTexts,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        print('Texts appended successfully');
+      } else {
+        print('Prompt not found');
+      }
+    } catch (e) {
+      print('Error appending texts: $e');
+    }
   }
 }

@@ -9,4 +9,9 @@ class PromptListControl {
   Future<void> deletePrompt(String promptId) async {
     await _model.deletePrompt(promptId);
   }
+
+  Future<void> appendPrompt(
+      String promptId, List<String> promptTexts, List<String> imageUrls) async {
+    await _model.appendPagesToPrompt(promptId, promptTexts, imageUrls);
+  }
 }

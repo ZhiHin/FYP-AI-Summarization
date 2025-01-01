@@ -24,7 +24,6 @@ class _DetectTextViewState extends State<DetectTextView> {
   bool _isLoading = true;
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  String _selectedLanguage = 'en';
   String _selectedOption = 'format';
   String type = 'prompt';
   bool _isDisposed = false;
@@ -303,68 +302,65 @@ class _DetectTextViewState extends State<DetectTextView> {
   Future<void> _showSaveDialog() async {
     TextEditingController nameController = TextEditingController();
     List<String> detectedTexts = _textControllers.map((c) => c.text).toList();
-    bool appendToCurrentPrompts = false;
+    print(detectedTexts);
 
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text('Save Detected Text'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Enter a name for the saved data:'),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    hintText: 'Name',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text('Save Detected Text'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Enter a name for the saved data:'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: nameController,
+                      decoration: InputDecoration(
+                        hintText: 'Name',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        filled: true,
+                      ),
                     ),
-                    filled: true,
-                  ),
+                    const SizedBox(height: 16),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  title: const Text('Append to current prompts'),
-                  value: appendToCurrentPrompts,
-                  onChanged: (bool value) {
-                    setState(() => appendToCurrentPrompts = value);
+              ),
+              actions: [
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                FilledButton(
+                  child: const Text('Save'),
+                  onPressed: () async {
+                    try {
+                      await _control.saveOriginal(
+                        widget.imageUrls,
+                        detectedTexts,
+                        nameController.text,
+                        type,
+                      );
+                      showSnackBar(context, "Prompt saved successfully");
+                      Navigator.of(context).pop();
+                    } catch (e) {
+                      showSnackBar(context, "Error saving prompt: $e");
+                    }
                   },
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            FilledButton(
-              child: const Text('Save'),
-              onPressed: () {
-                try {
-                  _control.saveOriginal(
-                    widget.imageUrls,
-                    detectedTexts,
-                    nameController.text,
-                    type,
-                  );
-                  Navigator.of(context).pop();
-                  showSnackBar(context, "Prompt saved successfully");
-                } catch (e) {
-                  showSnackBar(context, "Error saving prompt: $e");
-                }
-              },
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -381,43 +377,6 @@ class _DetectTextViewState extends State<DetectTextView> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: DropdownButton<String>(
-              value: _selectedLanguage,
-              underline: const SizedBox(),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              items: [
-                DropdownMenuItem(
-                  value: 'en',
-                  child: Row(
-                    children: const [
-                      Text('🇺🇸'),
-                      SizedBox(width: 4),
-                      Text('English'),
-                    ],
-                  ),
-                ),
-                DropdownMenuItem(
-                  value: 'cn',
-                  child: Row(
-                    children: const [
-                      Text('🇨🇳'),
-                      SizedBox(width: 4),
-                      Text('Chinese'),
-                    ],
-                  ),
-                ),
-              ],
-              onChanged: (String? newValue) {
-                if (newValue != null) {
-                  setState(() {
-                    _selectedLanguage = newValue;
-                    _isLoading = true;
-                    _textControllers.clear();
-                    _initializeTextControllers();
-                  });
-                }
-              },
             ),
           ),
           IconButton(

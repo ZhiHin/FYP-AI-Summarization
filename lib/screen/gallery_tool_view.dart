@@ -93,11 +93,6 @@ class _GalleryViewState extends State<GalleryView> {
               onPressed: _clearSelection,
               tooltip: 'Clear selection',
             ),
-            IconButton(
-              icon: const Icon(Icons.upload),
-              onPressed: _uploadSelectedImages,
-              tooltip: 'Upload selected',
-            ),
           ]
         ],
       ),
