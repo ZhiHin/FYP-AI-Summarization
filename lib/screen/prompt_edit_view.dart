@@ -39,7 +39,7 @@ class _PromptEditViewState extends State<PromptEditView> {
     setState(() {
       name = promptData['promptName'] as String;
       texts = List<String>.from(promptData['promptTexts'] as List<dynamic>);
-      imageUrls = List<String>.from(promptData['imageUrls'] as List<dynamic>);
+      imageUrls = List<String>.from(promptData['fileUrls'] as List<dynamic>);
       type = promptData['type'] as String;
       _initializeTextControllers();
       _isLoading = false;

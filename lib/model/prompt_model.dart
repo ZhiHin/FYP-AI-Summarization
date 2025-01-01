@@ -18,7 +18,7 @@ class PromptModel {
           .doc();
       await docRef.set({
         'promptName': promptName,
-        'imageUrls': imageUrls,
+        'fileUrls': imageUrls,
         'promptTexts': promptTexts,
         'type': type,
         'timestamp': FieldValue.serverTimestamp(),

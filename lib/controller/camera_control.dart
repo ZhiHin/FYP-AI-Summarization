@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:camera/camera.dart';
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 class CameraUIController {
   final List<XFile> images = [];
@@ -33,8 +34,7 @@ class CameraUIController {
   }
 
   Future<List<XFile>> addImages(BuildContext context, XFile image) async {
-    final bool isBlurred =
-        await BlurDetectionService.isImageBlurred(File(image.path));
+    final bool isBlurred = await _isImageBlurred(File(image.path));
     if (!isBlurred) {
       images.add(image);
     } else {
@@ -42,5 +42,15 @@ class CameraUIController {
     }
 
     return images;
+  }
+
+  Future<bool> _isImageBlurred(File imageFile) async {
+    final img = imageFile.path;
+    final mat = await cv.imread(img);
+    final laplacian = await cv.laplacian(mat, cv.MatType.CV_64F).variance();
+    print(laplacian);
+    print(laplacian.val[0]);
+    const double threshold = 100;
+    return laplacian.val[0] < threshold;
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:ai_summarization/controller/image_list_control.dart';
 import 'package:ai_summarization/screen/image_zoom.dart';
+import 'package:ai_summarization/screen/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:path/path.dart' as path;
@@ -26,20 +27,28 @@ class _ImageListViewState extends State<ImageListView> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Clear All Images'),
-          content: const Text('Are you sure you want to clear all images?'),
+          backgroundColor: Colors.grey[900],
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Clear All Images',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Are you sure you want to clear all images?',
+            style: TextStyle(color: Colors.white70),
+          ),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop(false);
-              },
+              onPressed: () => Navigator.of(context).pop(false),
             ),
             TextButton(
-              child: const Text('Clear'),
-              onPressed: () {
-                Navigator.of(context).pop(true);
-              },
+              child: const Text(
+                'Clear',
+                style: TextStyle(color: Colors.red),
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
             ),
           ],
         );
@@ -49,6 +58,7 @@ class _ImageListViewState extends State<ImageListView> {
     if (confirmClear == true) {
       setState(() {
         widget.control.deleteAllImages(context, widget.images);
+        showSnackBar(context, 'Images cleared');
       });
     }
   }
@@ -60,28 +70,40 @@ class _ImageListViewState extends State<ImageListView> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Rename Image'),
-          content: Row(children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                decoration: const InputDecoration(hintText: 'Enter new name'),
+          backgroundColor: Colors.grey[900],
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Rename Image',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: controller,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Enter new name',
+              hintStyle: const TextStyle(color: Colors.white54),
+              suffix: Text(fileExtension,
+                  style: const TextStyle(color: Colors.white70)),
+              enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Theme.of(context).primaryColor),
               ),
             ),
-            Text(fileExtension),
-          ]),
+          ),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
             ),
             TextButton(
-              child: const Text('Rename'),
-              onPressed: () {
-                Navigator.of(context).pop(controller.text);
-              },
+              child: Text(
+                'Rename',
+                style: TextStyle(color: Theme.of(context).primaryColor),
+              ),
+              onPressed: () => Navigator.of(context).pop(controller.text),
             ),
           ],
         );
@@ -89,8 +111,12 @@ class _ImageListViewState extends State<ImageListView> {
     );
 
     if (newName != null && newName.isNotEmpty) {
-      String newPath = await widget.control
-          .renameXFile(context, widget.images, widget.images[index], newName);
+      String newPath = await widget.control.renameXFile(
+        context,
+        widget.images,
+        widget.images[index],
+        newName,
+      );
       setState(() {
         widget.images[index] = XFile(newPath);
       });
@@ -98,73 +124,148 @@ class _ImageListViewState extends State<ImageListView> {
     return newName ?? '${DateTime.now().millisecondsSinceEpoch}';
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Image List'),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (String result) {
-              switch (result) {
-                case 'clear':
-                  _confirmClearImages();
-                  break;
-              }
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'clear',
-                child: Text('Clear List'),
+  void _showImageOptions(int index) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.white),
+                title: const Text(
+                  'Rename',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _renameImage(index);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteImage(index);
+                },
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text(
+          '${widget.images.length} Photos',
+        ),
+        elevation: 0,
+        actions: [
+          if (widget.images.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep, color: Colors.black),
+              onPressed: _confirmClearImages,
+            ),
         ],
       ),
-      body: ListView.builder(
-        itemCount: widget.images.length,
-        itemBuilder: (context, index) {
-          return ListTile(
-            leading: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => FullImageView(
-                      imagePath: widget.images[index].path,
+      body: widget.images.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.photo_library_outlined,
+                    size: 64,
+                    color: Colors.grey[700],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No photos yet',
+                    style: TextStyle(
+                      color: Colors.grey[700],
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : GridView.builder(
+              padding: const EdgeInsets.all(8),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: widget.images.length,
+              itemBuilder: (context, index) {
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => FullImageView(
+                          imagePath: widget.images[index].path,
+                        ),
+                      ),
+                    );
+                  },
+                  onLongPress: () => _showImageOptions(index),
+                  child: Hero(
+                    tag: widget.images[index].path,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        image: DecorationImage(
+                          image: FileImage(File(widget.images[index].path)),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
                     ),
                   ),
                 );
               },
-              child: Image.file(File(widget.images[index].path)),
             ),
-            title: Text(widget.images[index].name),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  onPressed: () {
-                    _renameImage(index);
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: () => _deleteImage(index),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: ElevatedButton(
-          onPressed: () =>
-              widget.control.uploadAllImagesToFirebase(context, widget.images),
-          child: const Text('Upload Images'),
-        ),
-      ),
+      floatingActionButton: widget.images.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                try {
+                  await widget.control
+                      .uploadAllImagesToFirebase(context, widget.images);
+                  showSnackBar(context, 'Uploading images...');
+                  setState(() {
+                    widget.images.clear(); // Clear the images list
+                  });
+                } catch (e) {
+                  showSnackBar(context, 'Failed to upload images: $e');
+                }
+              },
+              icon: const Icon(
+                Icons.cloud_upload,
+                color: Colors.white, // Set the icon color to white
+              ),
+              label: const Text(
+                'Upload All',
+                style:
+                    TextStyle(color: Colors.white), // Set text color to white
+              ),
+              backgroundColor: Theme.of(context).primaryColor,
+            )
+          : null,
     );
   }
 }
