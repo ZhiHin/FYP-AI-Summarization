@@ -27,7 +27,7 @@ class DetectTextControl {
     }
 
     var request = http.MultipartRequest(
-        'POST', Uri.parse('http://192.168.0.171:8000/format'));
+        'POST', Uri.parse('http://192.168.1.106:8000/format'));
 
     // Add file
     request.files.add(await http.MultipartFile.fromPath(
