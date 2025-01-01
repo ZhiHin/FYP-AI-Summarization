@@ -10,6 +10,8 @@ import 'package:pdf_render/pdf_render.dart';
 import 'package:intl/intl.dart';
 import 'package:rxdart/rxdart.dart';
 
+import 'editPdf.dart';
+
 // Enum for document types
 enum DocumentType { pdf, word, images, audios }
 
@@ -998,6 +1000,11 @@ class _DocumentsPageState extends State<DocumentsPage> {
                         },
                         trailing: PopupMenuButton(
                           itemBuilder: (context) => [
+                            if (documentType.toLowerCase() == 'pdf')
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Edit PDF'),
+                              ),
                             const PopupMenuItem(
                               value: 'rename',
                               child: Text('Rename'),
@@ -1021,9 +1028,22 @@ class _DocumentsPageState extends State<DocumentsPage> {
                                 _moveDocumentToFolder(doc.id, data['folderId'],
                                     _getCollectionForDoc(data));
                                 break;
+                              case 'edit':
+                                if (documentType == 'pdf') {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => EditPdfPage(
+                                        pdfUrl: data['fileUrl'],
+                                        fileName: fileName,
+                                        documentId: doc.id,
+                                      ),
+                                    ),
+                                  );
+                                }
+                                break;
                               case 'delete':
-                                _deleteDocument(
-                                    doc.id,
+                                _deleteDocument(doc.id,
                                     data['fileUrl'],
                                     fileName,
                                     _getCollectionForDoc(data) 
