@@ -227,11 +227,11 @@ class _ExtractScreenState extends State<ExtractScreen>
       const margin = 40.0;
 
       final textStyle = pw.TextStyle(
-        fontSize: 12,
+        fontSize: 20,
         lineSpacing: 1.5,
       );
       final titleStyle = pw.TextStyle(
-        fontSize: 16,
+        fontSize: 25,
         fontWeight: pw.FontWeight.bold,
       );
 
@@ -347,7 +347,7 @@ class _ExtractScreenState extends State<ExtractScreen>
 
   while (remainingText.isNotEmpty) {
     // Estimate the number of characters that can fit on one page
-    final charsPerLine = (pageWidth / (style.fontSize! * 0.5)).floor();
+    final charsPerLine = (pageWidth / (style.fontSize! * 0.2)).floor();
     final estimatedCharsPerPage = charsPerLine * maxLinesPerPage;
 
     // Extract a chunk of text for this page
@@ -355,18 +355,47 @@ class _ExtractScreenState extends State<ExtractScreen>
         ? remainingText.substring(0, estimatedCharsPerPage)
         : remainingText;
 
-    // Try to find a good break point
-    int breakPoint = _findBreakPoint(pageText);
-    if (breakPoint > 0) {
-      pageText = pageText.substring(0, breakPoint).trimRight();
-    }
+        // Advanced breaking strategies
+        final breakStrategies = [
+          // 1. Break at double newline (paragraph)
+          () => pageText.lastIndexOf('\n\n'),
+          
+          // 2. Break at single newline
+          () => pageText.lastIndexOf('\n'),
+          
+          // 3. Break at full words near page end
+          () {
+            final threeQuarterIndex = (pageText.length * 0.75).toInt();
+            return pageText.lastIndexOf(' ', threeQuarterIndex);
+          },
+          
+          // 4. Break at the last space
+          () => pageText.lastIndexOf(' '),
+        ];
 
-    // Add the text for this page
-    pages.add(pageText);
-
-    // Remove the processed content
-    remainingText = remainingText.substring(pageText.length).trimLeft();
-  }
+    // Find optimal break point
+        int breakPoint = -1;
+        for (var strategy in breakStrategies) {
+          breakPoint = strategy();
+          if (breakPoint != -1 && breakPoint > 0) {
+            pageText = pageText.substring(0, breakPoint);
+            break;
+          }
+        }
+        
+        // Finalize page text
+        pageText = pageText.trimRight();
+        pages.add(pageText);
+        
+        // Remove used text
+        remainingText = remainingText.substring(pageText.length).trimLeft();
+        
+        // Prevent tiny last pages
+        if (remainingText.length < estimatedCharsPerPage / 4 && pages.isNotEmpty) {
+          pages[pages.length - 1] += ' ' + remainingText;
+          remainingText = '';
+        }
+      }
 
   return pages;
 }

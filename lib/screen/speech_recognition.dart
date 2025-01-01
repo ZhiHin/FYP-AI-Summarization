@@ -1,8 +1,12 @@
 import 'package:avatar_glow/avatar_glow.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:avatar_glow/avatar_glow.dart';
+
+import '../service/translation_service.dart';
 
 class SpeechRecognitionScreen extends StatefulWidget {
   const SpeechRecognitionScreen({super.key});
@@ -16,7 +20,7 @@ class _SpeechRecognitionScreenState extends State<SpeechRecognitionScreen> {
   bool isListening = false;
   late stt.SpeechToText _speechToText;
   String text = "Press the button to start recording";
-  String currentText = ""; // Buffer for current speech segment
+  String currentText = "";
   double confidence = 1.0;
   bool isInitialized = false;
   bool hasMicPermission = false;
@@ -30,6 +34,30 @@ class _SpeechRecognitionScreenState extends State<SpeechRecognitionScreen> {
   bool _hasError = false;
   bool _isFirstRecognition = true;
 
+  final TranslationService _translationService = TranslationService();
+  String? _selectedTargetLanguage;
+  bool _isTranslating = false;
+  String? _translatedText;
+
+  // Add language map
+  final Map<String, String> _supportedLanguages = {
+    'English': 'en',
+    'Spanish': 'es',
+    'French': 'fr',
+    'German': 'de',
+    'Italian': 'it',
+    'Portuguese': 'pt',
+    'Chinese': 'zh',
+    'Arabic': 'ar',
+    'Malay': 'ms',
+    'Korean': 'ko',
+    'Japanese': 'ja'
+  };
+
+  // Add TTS controller
+  final FlutterTts flutterTts = FlutterTts();
+  bool _isSpeaking = false;
+
   @override
   void initState() {
     super.initState();
@@ -37,6 +65,60 @@ class _SpeechRecognitionScreenState extends State<SpeechRecognitionScreen> {
     _checkPermissions();
     if (hasMicPermission) {
       _checkAudioDevices();
+    }
+  }
+
+  // Add TTS method
+  Future<void> _speakTranslatedText() async {
+    if (_translatedText == null) return;
+
+    if (_isSpeaking) {
+      await flutterTts.stop();
+      setState(() => _isSpeaking = false);
+      return;
+    }
+
+    try {
+      setState(() => _isSpeaking = true);
+      await flutterTts.setLanguage(_selectedTargetLanguage ?? 'en-US');
+      await flutterTts.speak(_translatedText!);
+
+      flutterTts.setCompletionHandler(() {
+        setState(() => _isSpeaking = false);
+      });
+    } catch (e) {
+      setState(() => _isSpeaking = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error speaking text: $e')),
+      );
+    }
+  }
+
+  // Add translation method
+  Future<void> _translateText() async {
+    if (text.isEmpty ||
+        text == "Press the button to start recording" ||
+        _selectedTargetLanguage == null) {
+      return;
+    }
+
+    setState(() => _isTranslating = true);
+
+    try {
+      final translated = await _translationService.translateText(
+        text,
+        _selectedTargetLanguage!,
+      );
+
+      setState(() {
+        _translatedText = translated;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Translation failed: $e')),
+      );
+    } finally {
+      setState(() => _isTranslating = false);
     }
   }
 
@@ -434,130 +516,381 @@ class _SpeechRecognitionScreenState extends State<SpeechRecognitionScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Confidence: ${(confidence * 100).toStringAsFixed(1)}%"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _showAudioSettings,
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: _showDebugInfo,
-          ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: AvatarGlow(
-        animate: isListening,
-        glowColor: Theme.of(context).primaryColor,
-        duration: const Duration(milliseconds: 2000),
-        repeat: true,
-        child: FloatingActionButton(
-          onPressed: _toggleListening,
-          backgroundColor: !hasMicPermission
-              ? Colors.grey
-              : (isListening ? Colors.red : Colors.blue),
-          child: Icon(
-            !hasMicPermission
-                ? Icons.mic_off
-                : (isListening ? Icons.stop : Icons.mic),
-            size: 30,
-            color: Colors.white,
-          ),
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    body: Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.blue.shade50, Colors.white],
         ),
       ),
-      body: SingleChildScrollView(
-        reverse: true,
-        child: Container(
-          padding: const EdgeInsets.all(30),
-          child: Column(
-            children: [
-              // Microphone Permission message
-              if (!hasMicPermission)
-                const Card(
-                  color: Colors.amber,
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                _buildCustomAppBar(),
+                Expanded(
                   child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Text(
-                      'Microphone permission is required.\nTap the button to enable.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 16),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          if (!hasMicPermission) _buildPermissionWarning(),
+                          _buildSpeechInputCard(),
+                          const SizedBox(height: 24),
+                          _buildTranslationSection(),
+                          if (_translatedText != null) ...[
+                            const SizedBox(height: 24),
+                            _buildTranslatedOutput(),
+                          ],
+                          const SizedBox(height: 24),
+                          _buildActionButtons(),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              const SizedBox(height: 20),
+              ],
+            ),
+            Positioned(
+              right: 20,
+              bottom: 20,
+              child: _buildMicButton(),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
-              // Scrollable Transcribed Text Box
-              Container(
-                height: 300, // Adjustable height
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey, width: 1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SingleChildScrollView(
-                  child: Text(
-                    text,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      color: Colors.black87,
-                      height: 1.3,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Buttons for copy, clear, etc.
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                    ),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: text));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Text copied to clipboard"),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.copy, color: Colors.white),
-                    label: const Text(
-                      "Copy Text",
-                      style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  _buildClearButton(),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Listening status
+Widget _buildCustomAppBar() {
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+        ),
+      ],
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.bar_chart, size: 20, color: Colors.blue.shade700),
+              const SizedBox(width: 8),
               Text(
-                isListening ? 'Listening...' : 'Tap mic to start',
+                "${(confidence * 100).toStringAsFixed(1)}%",
                 style: TextStyle(
-                  fontSize: 16,
-                  color: isListening ? Colors.red : Colors.grey,
-                  fontStyle: FontStyle.italic,
+                  color: Colors.blue.shade700,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
         ),
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: _showAudioSettings,
+              color: Colors.grey.shade700,
+            ),
+            IconButton(
+              icon: const Icon(Icons.info_outline),
+              onPressed: _showDebugInfo,
+              color: Colors.grey.shade700,
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildPermissionWarning() {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 20),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    decoration: BoxDecoration(
+      color: Colors.orange.shade50,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.orange.shade200),
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.mic_off, color: Colors.orange.shade700),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            'Microphone permission is required.\nTap the button to enable.',
+            style: TextStyle(
+              color: Colors.orange.shade900,
+              height: 1.3,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildSpeechInputCard() {
+  return Card(
+    elevation: 4,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    child: Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Speech Input',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (text.isNotEmpty && text != "Press the button to start recording")
+                IconButton(
+                  icon: const Icon(Icons.copy),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: text));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Text copied to clipboard"),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  color: Colors.blue,
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 18,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
+
+Widget _buildTranslationSection() {
+  return Card(
+    elevation: 2,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Translation',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: _selectedTargetLanguage,
+              hint: const Text('Select target language'),
+              underline: const SizedBox(),
+              items: _supportedLanguages.entries.map((entry) {
+                return DropdownMenuItem(
+                  value: entry.value,
+                  child: Text(entry.key),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() => _selectedTargetLanguage = value);
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _isTranslating ? null : _translateText,
+              child: _isTranslating
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Translate'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildTranslatedOutput() {
+  return Card(
+    elevation: 2,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    child: Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Translation Output',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.copy, color: Colors.blue),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: _translatedText ?? ''));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Translation copied to clipboard"),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      _isSpeaking ? Icons.stop_circle : Icons.volume_up,
+                      color: Colors.blue,
+                    ),
+                    onPressed: _speakTranslatedText,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _translatedText!,
+              style: const TextStyle(fontSize: 16, height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildActionButtons() {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red.shade50,
+          foregroundColor: Colors.red,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        onPressed: () {
+          setState(() {
+            text = "Press the button to start recording";
+            _isFirstRecognition = true;
+            _translatedText = null;
+          });
+        },
+        icon: const Icon(Icons.delete_outline),
+        label: const Text("Clear All"),
+      ),
+    ],
+  );
+}
+
+Widget _buildMicButton() {
+  return SizedBox(
+    width: 80,
+    height: 80,
+    child: AvatarGlow(
+      animate: isListening,
+      glowColor: Theme.of(context).primaryColor,
+      duration: const Duration(milliseconds: 2000),
+      repeat: true,
+      child: MaterialButton(
+        onPressed: _toggleListening,
+        elevation: 8.0,
+        shape: const CircleBorder(),
+        child: CircleAvatar(
+          backgroundColor: !hasMicPermission
+              ? Colors.grey
+              : (isListening ? Colors.red : Colors.blue),
+          radius: 30.0,
+          child: Icon(
+            !hasMicPermission
+                ? Icons.mic_off
+                : (isListening ? Icons.stop : Icons.mic),
+            size: 28,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    ),
+  );
+}
 }
