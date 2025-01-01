@@ -301,7 +301,17 @@ async def perform_ocr(image: UploadFile = File(...)):
     except Exception as e:
         logging.error(f"Error processing image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
+    
+@app.post("/extract_main_points")
+async def extract_main_points(request: SummarizeRequest):
+    try:
+        text = "extract main points" + request.text
+        main_points = extractive_summarizer(text, max_length = request.max_length, min_length = 50)
+        return {"extracted_text": main_points}
+    except Exception as e:
+        logging.error(f"Error extracting main points: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 # PDF Text Extraction Endpoint
 @app.post("/extract_text")
 async def extract_text(file: UploadFile = File(...)):

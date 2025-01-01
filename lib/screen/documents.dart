@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:ai_summarization/screen/image_zoom.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -594,11 +595,9 @@ class _DocumentsPageState extends State<DocumentsPage> {
                 'fileUrl': fileUrl,
                 'folderId': _selectedFolderId,
                 'documentType': 'audios',
-                'audioId': DateTime.now()
-                    .millisecondsSinceEpoch
-                    .toString(), 
+                'audioId': DateTime.now().millisecondsSinceEpoch.toString(),
                 'transcribed': false,
-                'transcriptText': null, 
+                'transcriptText': null,
               }
             : {
                 'name': fileName,
@@ -994,6 +993,15 @@ class _DocumentsPageState extends State<DocumentsPage> {
                                 ),
                               ),
                             );
+                          } else if (documentType ==
+                              DocumentType.images.toString().split('.').last) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    FullImageView(imageUrl: data['fileUrl']),
+                              ),
+                            );
                           } else {
                             // Launch URL or handle other document types
                           }
@@ -1043,11 +1051,8 @@ class _DocumentsPageState extends State<DocumentsPage> {
                                 }
                                 break;
                               case 'delete':
-                                _deleteDocument(doc.id,
-                                    data['fileUrl'],
-                                    fileName,
-                                    _getCollectionForDoc(data) 
-                                    );
+                                _deleteDocument(doc.id, data['fileUrl'],
+                                    fileName, _getCollectionForDoc(data));
                                 break;
                             }
                           },
