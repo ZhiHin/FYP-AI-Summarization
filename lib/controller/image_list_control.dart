@@ -86,7 +86,7 @@ class ImageListControl {
       }
     }
     showSnackBar(context, 'Images uploaded successfully');
-    images.clear();
+    deleteAllImages(context, images);
   }
 
   Future<void> deleteAllImages(BuildContext context, List<XFile> images) async {
@@ -98,6 +98,5 @@ class ImageListControl {
       }
     }
     images.clear();
-    showSnackBar(context, 'Images deleted successfully');
   }
 }

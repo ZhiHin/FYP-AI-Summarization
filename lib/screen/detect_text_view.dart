@@ -6,8 +6,13 @@ import 'package:flutter/material.dart';
 
 class DetectTextView extends StatefulWidget {
   final List<String> imageUrls;
+  final List<String> croppedImagesPath;
 
-  const DetectTextView({super.key, required this.imageUrls});
+  const DetectTextView({
+    super.key,
+    required this.croppedImagesPath,
+    required this.imageUrls,
+  });
 
   @override
   _DetectTextViewState createState() => _DetectTextViewState();
@@ -20,124 +25,53 @@ class _DetectTextViewState extends State<DetectTextView> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   String _selectedLanguage = 'en';
-  String _selectedOption = 'format'; // Default selected option
+  String _selectedOption = 'format';
   String type = 'prompt';
+  bool _isDisposed = false;
+
   @override
   void initState() {
     super.initState();
     _initializeTextControllers();
   }
 
-  Future<void> _initializeTextControllers() async {
-    for (var url in widget.imageUrls) {
-      final text =
-          await _control.generateFormatTextFromImage(url, _selectedOption);
-      _textControllers.add(TextEditingController(text: text));
+  @override
+  void dispose() {
+    _isDisposed = true;
+    for (var controller in _textControllers) {
+      controller.dispose();
     }
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+    _pageController.dispose();
+    super.dispose();
   }
 
-  Widget _buildSplitTextView() {
-    return Stack(
-      children: [
-        PageView.builder(
-          controller: _pageController,
-          itemCount: widget.imageUrls.length,
-          itemBuilder: (context, index) {
-            return SingleChildScrollView(
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => FullImageView(
-                            imageUrl: widget.imageUrls[index],
-                          ),
-                        ),
-                      );
-                    },
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: Image.network(
-                        widget.imageUrls[index],
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      DropdownButton<String>(
-                        value: _selectedOption,
-                        onChanged: (String? newValue) {
-                          setState(() {
-                            _selectedOption = newValue!;
-                            _textControllers.clear();
-                            _initializeTextControllers();
-                          });
-                        },
-                        items: <String>['format', 'fine-grained']
-                            .map<DropdownMenuItem<String>>((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: TextField(
-                      controller: _textControllers[index],
-                      maxLines: null,
-                      decoration: InputDecoration(
-                        border: const OutlineInputBorder(),
-                        labelText: 'Page ${index + 1}',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-          onPageChanged: (index) {
-            setState(() {
-              _currentPage = index;
-              print('Page changed to: $_currentPage'); // Debug print
-            });
-          },
-        ),
-        if (_currentPage > 0)
-          Positioned(
-            left: 16.0,
-            top: MediaQuery.of(context).size.height / 2 - 24,
-            child: Icon(
-              Icons.arrow_back_ios,
-              size: 48.0,
-              color: Colors.black.withOpacity(0.5),
-            ),
-          ),
-        // Right arrow
-        if (_currentPage < widget.imageUrls.length - 1)
-          Positioned(
-            right: 16.0,
-            top: MediaQuery.of(context).size.height / 2 - 24,
-            child: Icon(
-              Icons.arrow_forward_ios,
-              size: 48.0,
-              color: Colors.black.withOpacity(0.5),
-            ),
-          ),
-      ],
-    );
+  Future<void> _initializeTextControllers() async {
+    try {
+      setState(() => _isLoading = true);
+
+      for (var imagePath in widget.croppedImagesPath) {
+        if (_isDisposed) return;
+
+        final text = await _control.generateFormatTextFromImage(
+          imagePath,
+          _selectedOption,
+          true,
+        );
+
+        if (_isDisposed) return;
+
+        _textControllers.add(TextEditingController(text: text));
+      }
+
+      if (!_isDisposed && mounted) {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (!_isDisposed && mounted) {
+        setState(() => _isLoading = false);
+        showSnackBar(context, "Error processing images: $e");
+      }
+    }
   }
 
   void _navigateToSummarize() {
@@ -156,44 +90,273 @@ class _DetectTextViewState extends State<DetectTextView> {
     );
   }
 
+  Widget _buildPageIndicator() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(
+          widget.imageUrls.length,
+          (index) => Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            height: 8,
+            width: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: index == _currentPage
+                  ? Theme.of(context).primaryColor
+                  : Colors.grey.shade300,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSplitTextView() {
+    return Stack(
+      children: [
+        Column(
+          children: [
+            _buildPageIndicator(),
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: widget.imageUrls.length,
+                itemBuilder: (context, index) {
+                  if (index >= _textControllers.length) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Stack(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => FullImageView(
+                                            imageUrl: widget.imageUrls[index],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: AspectRatio(
+                                      aspectRatio: 16 / 9,
+                                      child: Image.network(
+                                        widget.imageUrls[index],
+                                        fit: BoxFit.cover,
+                                        loadingBuilder:
+                                            (context, child, progress) {
+                                          if (progress == null) return child;
+                                          return Center(
+                                            child: CircularProgressIndicator(
+                                              value: progress
+                                                          .expectedTotalBytes !=
+                                                      null
+                                                  ? progress
+                                                          .cumulativeBytesLoaded /
+                                                      progress
+                                                          .expectedTotalBytes!
+                                                  : null,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: IconButton(
+                                      icon: const Icon(Icons.fullscreen),
+                                      color: Colors.white,
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => FullImageView(
+                                              imageUrl: widget.imageUrls[index],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Card(
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Detected Text - Page ${index + 1}',
+                                    style:
+                                        Theme.of(context).textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: _textControllers[index],
+                                    maxLines: null,
+                                    decoration: InputDecoration(
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.grey.shade50,
+                                    ),
+                                    style: const TextStyle(height: 1.5),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                onPageChanged: (index) => setState(() => _currentPage = index),
+              ),
+            ),
+          ],
+        ),
+        if (_currentPage > 0)
+          Positioned(
+            left: 8,
+            top: MediaQuery.of(context).size.height / 2,
+            child: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.8),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.arrow_back_ios),
+              ),
+              onPressed: () {
+                _pageController.previousPage(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              },
+            ),
+          ),
+        if (_currentPage < widget.imageUrls.length - 1)
+          Positioned(
+            right: 8,
+            top: MediaQuery.of(context).size.height / 2,
+            child: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.8),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.arrow_forward_ios),
+              ),
+              onPressed: () {
+                _pageController.nextPage(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
   Future<void> _showSaveDialog() async {
-    TextEditingController _nameController = TextEditingController();
-    List<String> detectedTexts = [];
-    for (var controller in _textControllers) {
-      detectedTexts.add(controller.text);
-    }
+    TextEditingController nameController = TextEditingController();
+    List<String> detectedTexts = _textControllers.map((c) => c.text).toList();
+    bool appendToCurrentPrompts = false;
+
     return showDialog<void>(
       context: context,
-      barrierDismissible: false, // User must tap a button to dismiss the dialog
+      barrierDismissible: true,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Save'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Save Detected Text'),
           content: SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 const Text('Enter a name for the saved data:'),
+                const SizedBox(height: 8),
                 TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
+                  controller: nameController,
+                  decoration: InputDecoration(
                     hintText: 'Name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    filled: true,
                   ),
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  title: const Text('Append to current prompts'),
+                  value: appendToCurrentPrompts,
+                  onChanged: (bool value) {
+                    setState(() => appendToCurrentPrompts = value);
+                  },
                 ),
               ],
             ),
           ),
-          actions: <Widget>[
+          actions: [
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
             ),
-            TextButton(
+            FilledButton(
               child: const Text('Save'),
               onPressed: () {
                 try {
-                  _control.saveOriginal(widget.imageUrls, detectedTexts,
-                      _nameController.text, type);
+                  _control.saveOriginal(
+                    widget.imageUrls,
+                    detectedTexts,
+                    nameController.text,
+                    type,
+                  );
                   Navigator.of(context).pop();
                   showSnackBar(context, "Prompt saved successfully");
                 } catch (e) {
@@ -211,57 +374,83 @@ class _DetectTextViewState extends State<DetectTextView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Detect Text View'),
+        title: const Text('Text Detection'),
         actions: [
-          DropdownButton<String>(
-            value: _selectedLanguage,
-            onChanged: (String? newValue) {
-              setState(() {
-                _selectedLanguage = newValue!;
-                _isLoading = true;
-                _textControllers.clear();
-                _initializeTextControllers();
-              });
-            },
-            items: <String>['en', 'cn']
-                .map<DropdownMenuItem<String>>((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value.toUpperCase()),
-              );
-            }).toList(),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: DropdownButton<String>(
+              value: _selectedLanguage,
+              underline: const SizedBox(),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              items: [
+                DropdownMenuItem(
+                  value: 'en',
+                  child: Row(
+                    children: const [
+                      Text('🇺🇸'),
+                      SizedBox(width: 4),
+                      Text('English'),
+                    ],
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: 'cn',
+                  child: Row(
+                    children: const [
+                      Text('🇨🇳'),
+                      SizedBox(width: 4),
+                      Text('Chinese'),
+                    ],
+                  ),
+                ),
+              ],
+              onChanged: (String? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _selectedLanguage = newValue;
+                    _isLoading = true;
+                    _textControllers.clear();
+                    _initializeTextControllers();
+                  });
+                }
+              },
+            ),
           ),
-          PopupMenuButton<String>(
-            onSelected: (String result) {
-              if (result == 'save') {
-                _showSaveDialog();
-              }
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'save',
-                child: Text('Save'),
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.save),
+            onPressed: _showSaveDialog,
+            tooltip: 'Save',
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Expanded(
-                  child: _buildSplitTextView(),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: ElevatedButton(
-                    onPressed: _navigateToSummarize,
-                    child: const Text('Summarize'),
-                  ),
-                ),
-              ],
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Processing images...'),
+                ],
+              ),
+            )
+          : _buildSplitTextView(),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: FilledButton(
+            onPressed: _navigateToSummarize,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
             ),
+            child: const Text('Summarize Text'),
+          ),
+        ),
+      ),
     );
   }
 }

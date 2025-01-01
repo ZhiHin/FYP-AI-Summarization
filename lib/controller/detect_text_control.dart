@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:ai_summarization/model/prompt_model.dart';
-import 'package:ai_summarization/screen/utils.dart';
-import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 class DetectTextControl {
@@ -22,15 +21,33 @@ class DetectTextControl {
   }
 
   Future<String> generateFormatTextFromImage(
-      String imageUrl, String selectedOption) async {
-    final response = await http.post(
-      Uri.parse('http://192.168.1.106:8000/format'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'image_url': imageUrl, 'option': selectedOption}),
-    );
+      String imagePath, String selectedOption, bool isOnPage) async {
+    if (!isOnPage) {
+      throw Exception('Request canceled because not on page');
+    }
+
+    var request = http.MultipartRequest(
+        'POST', Uri.parse('http://192.168.0.171:8000/format'));
+
+    // Add file
+    request.files.add(await http.MultipartFile.fromPath(
+      'image',
+      imagePath,
+    ));
+
+    request.fields['option'] = selectedOption;
+
+    // Send request with timeout
+    var response = await request.send().timeout(
+          const Duration(minutes: 5),
+          onTimeout: () => throw TimeoutException('Detection timeout'),
+        );
+
+    // Handle response
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['generated_text'];
+      var responseData = await response.stream.bytesToString();
+      var jsonResponse = jsonDecode(responseData);
+      return jsonResponse['extracted_text'];
     } else {
       throw Exception('Failed to generate text');
     }

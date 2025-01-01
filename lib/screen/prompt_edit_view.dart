@@ -39,7 +39,7 @@ class _PromptEditViewState extends State<PromptEditView> {
     setState(() {
       name = promptData['promptName'] as String;
       texts = List<String>.from(promptData['promptTexts'] as List<dynamic>);
-      imageUrls = List<String>.from(promptData['imageUrls'] as List<dynamic>);
+      imageUrls = List<String>.from(promptData['fileUrls'] as List<dynamic>);
       type = promptData['type'] as String;
       _initializeTextControllers();
       _isLoading = false;
@@ -317,7 +317,7 @@ class _PromptEditViewState extends State<PromptEditView> {
                     child: GestureDetector(
                       onTap: () {
                         _pageController.previousPage(
-                          duration: Duration(milliseconds: 300),
+                          duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         );
                       },
@@ -335,7 +335,7 @@ class _PromptEditViewState extends State<PromptEditView> {
                     child: GestureDetector(
                       onTap: () {
                         _pageController.nextPage(
-                          duration: Duration(milliseconds: 300),
+                          duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         );
                       },

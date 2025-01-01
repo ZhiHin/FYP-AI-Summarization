@@ -18,10 +18,10 @@ class ImageModel {
       String fileName = image.name;
       String userId = user.uid;
       Reference storageRef =
-          FirebaseStorage.instance.ref('users/$userId/uploads/$fileName');
+          FirebaseStorage.instance.ref('users/$userId/images/$fileName');
 
       ListResult result =
-          await FirebaseStorage.instance.ref('users/$userId/uploads').listAll();
+          await FirebaseStorage.instance.ref('users/$userId/images').listAll();
 
       List<String> existingFiles =
           result.items.map((item) => item.name).toList();
@@ -31,7 +31,7 @@ class ImageModel {
         fileName =
             '${path.basenameWithoutExtension(image.name)}($index)${path.extension(image.name)}';
         storageRef =
-            FirebaseStorage.instance.ref('users/$userId/uploads/$fileName');
+            FirebaseStorage.instance.ref('users/$userId/images/$fileName');
         index++;
       }
 
@@ -41,15 +41,22 @@ class ImageModel {
 
       String imageUrl = await taskSnapshot.ref.getDownloadURL();
 
+      // Get the image size
+      int imageSize = await File(image.path).length();
+
       // Save metadata to Firestore
       await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
           .collection('images')
           .add({
-        'imageUrl': imageUrl,
+        'fileUrl': imageUrl,
+        'description': '',
+        'folderId': '',
+        'documentType': 'images',
         'name': fileName,
-        'timestamp': FieldValue.serverTimestamp(),
+        'size': imageSize,
+        'uploadedAt': FieldValue.serverTimestamp(),
       });
     } on FirebaseException catch (e) {
       showSnackBar(context, "Error capturing image: $e");

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:ai_summarization/model/prompt_model.dart';
 import 'package:http/http.dart' as http;
