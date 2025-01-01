@@ -24,6 +24,13 @@ from happytransformer import HappyTextToText, TTSettings
 import cv2
 import numpy as np
 from google.cloud import vision
+from google.cloud import speech
+import asyncio
+from pydub import AudioSegment
+from pydub import AudioSegment
+from pydub.utils import make_chunks
+import io
+import asyncio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +40,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "service_account_token.json"
 client = vision.ImageAnnotatorClient()
+speech_client = speech.SpeechClient()
 
 # Enable CORS for all routes
 app.add_middleware(
@@ -385,47 +393,77 @@ async def summarize_text(request: SummarizeRequest):
 
 @app.post("/audio_to_text")
 async def audio_to_text(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(('.wav', '.mp3', '.flac')):
-        raise HTTPException(status_code=400, detail="Unsupported file format")
-
+    """Transcribes audio files into text using Google Speech-to-Text API."""
     try:
-        # Save the uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_audio_file:
-            temp_audio_file.write(await file.read())
-            temp_audio_path = temp_audio_file.name
+        print(f"Debug: Received file: {file.filename}")
 
-        try:
-            # Modify pipeline call to handle long audio files
-            transcription = asr_pipe(
-                temp_audio_path, 
-                return_timestamps=True,  # Enable timestamp generation
-                chunk_length_s=30,  # Split audio into 30-second chunks
-                stride_length_s=5   # 5-second overlap between chunks
-            )
-            
-            # Extract text from the transcription result
-            full_text = transcription["text"]
-            
-            # Clean up temporary file
-            os.unlink(temp_audio_path)
-            
-            return {"transcription": full_text}
-        
-        except Exception as transcription_error:
-            # Ensure file is deleted
-            if os.path.exists(temp_audio_path):
-                os.unlink(temp_audio_path)
-            
+        # Validate file format
+        allowed_formats = ('.wav', '.mp3', '.flac', '.m4a')
+        if not file.filename.lower().endswith(allowed_formats):
             raise HTTPException(
-                status_code=500, 
-                detail=f"Transcription failed: {str(transcription_error)}"
+                status_code=400,
+                detail=f"Unsupported file format. Supported formats: {allowed_formats}"
             )
-    
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error processing audio: {str(e)}"
+
+        # Save uploaded file
+        temp_path = "temp_audio/audio.mp3"  # Keep it as mp3 for the test
+        contents = await file.read()
+        with open(temp_path, "wb") as temp_file:
+            temp_file.write(contents)
+        print(f"Debug: File saved to {temp_path}")
+
+        # Open the audio file
+        with open(temp_path, "rb") as audio_file:
+            content = audio_file.read()
+
+        # Configure audio file for speech recognition
+        audio = speech.RecognitionAudio(content=content)
+        
+        # Adjust configuration based on the format
+        if file.filename.lower().endswith('.mp3'):
+            encoding = speech.RecognitionConfig.AudioEncoding.MP3
+        elif file.filename.lower().endswith('.flac'):
+            encoding = speech.RecognitionConfig.AudioEncoding.FLAC
+        else:
+            encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16  # Default for WAV
+
+        # Sample rate for MP3, WAV or FLAC files can differ, so set it based on the file type
+        sample_rate_hertz = 16000  # Default sample rate for most speech-to-text
+
+        config = speech.RecognitionConfig(
+            encoding=encoding,
+            sample_rate_hertz=sample_rate_hertz,
+            language_code="en-US",
+            enable_automatic_punctuation=True,
+            use_enhanced=True,
         )
+
+        # Request transcription via streaming
+        streaming_config = speech.StreamingRecognitionConfig(config=config)
+        requests = [speech.StreamingRecognizeRequest(audio_content=content)]
+
+        responses = speech_client.streaming_recognize(streaming_config, requests)
+
+        # Collect transcription
+        transcription = ""
+        for response in responses:
+            if response.results:
+                for result in response.results:
+                    print(f"Debug: Transcription segment: {result.alternatives[0].transcript}")
+                    transcription += result.alternatives[0].transcript
+            else:
+                print("Debug: No results found in this response.")
+
+        if transcription:
+            print(f"Debug: Transcription successful: {transcription[:100]}...")  # Output first 100 characters
+        else:
+            print("Debug: No transcription text was generated.")
+
+        return {"transcription": transcription if transcription else "No transcription available"}
+
+    except Exception as e:
+        print(f"Debug: Error in audio_to_text: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
     
 
 # Health Check Endpoint

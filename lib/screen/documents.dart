@@ -591,7 +591,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                 'uploadedAt': uploadDate,
                 'fileUrl': fileUrl,
                 'folderId': _selectedFolderId,
-                'documentType': 'audio',
+                'documentType': 'audios',
                 'audioId': DateTime.now()
                     .millisecondsSinceEpoch
                     .toString(), 
