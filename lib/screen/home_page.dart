@@ -7,6 +7,7 @@ import '../components/nav_button.dart';
 import '../components/file_card.dart';
 import 'package:intl/intl.dart';
 import 'document_summarize.dart';
+import 'editPdf.dart';
 import 'gallery_tool_view.dart';
 import 'speech_recognition.dart';
 import 'text_summarize.dart';
@@ -169,30 +170,36 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _handleEdit(int index) async {
-    try {
-      final user = _auth.currentUser;
-      if (user != null && index < _recentFiles.length) {
-        final file = _recentFiles[index];
-        final fileId = file['id'];
-        final fileType = file['type'];
+  try {
+    final user = _auth.currentUser;
+    if (user != null && index < _recentFiles.length) {
+      final file = _recentFiles[index];
+      final fileId = file['id'];
+      final fileType = file['type'];
+      final fileName = file['name'];
+      final fileUrl = file['fileUrl'];
 
-        await _firestore
-            .collection('users')
-            .doc(user.uid)
-            .collection(fileType)
-            .doc(fileId)
-            .update({
-          'lastEdited': FieldValue.serverTimestamp(),
-        });
-
+      if (fileType == 'documents' && fileName.toLowerCase().endsWith('.pdf')) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EditPdfPage(
+              pdfUrl: fileUrl,
+              fileName: fileName,
+              documentId: fileId,
+            ),
+          ),
+        );
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("File ${index + 1} updated")),
+          SnackBar(content: Text("Only PDF files can be edited")),
         );
       }
-    } catch (e) {
-      _showError("Error updating file: $e");
     }
+  } catch (e) {
+    _showError("Error opening editor: $e");
   }
+}
 
   Future<void> _handleDelete(int index) async {
     try {
