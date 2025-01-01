@@ -1066,9 +1066,9 @@ class _DocumentsPageState extends State<DocumentsPage> {
         return Icons.picture_as_pdf;
       case 'word':
         return Icons.description;
-      case 'image':
+      case 'images':
         return Icons.image;
-      case 'audio':
+      case 'audios':
         return Icons.audiotrack;
       default:
         return Icons.insert_drive_file;
