@@ -303,7 +303,10 @@ class _DetectTextViewState extends State<DetectTextView> {
     TextEditingController nameController = TextEditingController();
     List<String> detectedTexts = _textControllers.map((c) => c.text).toList();
     print(detectedTexts);
-
+    if (_isLoading) {
+      showSnackBar(context, "No text detected");
+      return;
+    }
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -372,13 +375,6 @@ class _DetectTextViewState extends State<DetectTextView> {
       appBar: AppBar(
         title: const Text('Text Detection'),
         actions: [
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-          ),
           IconButton(
             icon: const Icon(Icons.save),
             onPressed: _showSaveDialog,

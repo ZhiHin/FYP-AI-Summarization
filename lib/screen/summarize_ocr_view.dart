@@ -1,5 +1,6 @@
 import 'package:ai_summarization/controller/summarize_ocr_control.dart';
 import 'package:ai_summarization/screen/image_zoom.dart';
+import 'package:ai_summarization/screen/ocr_summarize_pdf_saver.dart';
 import 'package:ai_summarization/screen/utils.dart';
 import 'package:ai_summarization/service/translation_service.dart';
 import 'package:flutter/material.dart';
@@ -560,14 +561,14 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
                       _selectedLanguage = newValue;
                     });
                   },
-                  items: [
+                  items: const [
                     DropdownMenuItem(
                       value: 'en',
                       child: Row(
                         children: [
-                          const Text('🇺🇸'),
-                          const SizedBox(width: 4),
-                          const Text('English'),
+                          Text('🇺🇸'),
+                          SizedBox(width: 4),
+                          Text('English'),
                         ],
                       ),
                     ),
@@ -575,9 +576,18 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
                       value: 'zh',
                       child: Row(
                         children: [
-                          const Text('🇨🇳'),
-                          const SizedBox(width: 4),
-                          const Text('Chinese'),
+                          Text('🇨🇳'),
+                          SizedBox(width: 4),
+                          Text('Chinese'),
+                        ],
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'es',
+                      child: Row(
+                        children: [
+                          SizedBox(width: 4),
+                          Text('Spanish'),
                         ],
                       ),
                     ),
@@ -598,6 +608,7 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
 
   Future<void> _showSaveDialog() async {
     final TextEditingController nameController = TextEditingController();
+    bool saveAsPdf = false;
 
     return showDialog<void>(
       context: context,
@@ -627,6 +638,15 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    CheckboxListTile(
+                      value: saveAsPdf,
+                      onChanged: (bool? value) {
+                        setDialogState(() {
+                          saveAsPdf = value ?? false;
+                        });
+                      },
+                      title: const Text('Save as PDF'),
+                    ),
                   ],
                 ),
               ),
@@ -638,29 +658,44 @@ class _SummarizeOcrViewState extends State<SummarizeOcrView> {
                 FilledButton(
                   onPressed: () async {
                     try {
-                      List<String> promptTexts =
-                          _textControllers.map((c) => c.text).toList();
-                      List<String> summaryTexts =
-                          _summaryControllers.map((c) => c.text).toList();
-                      List<String> combinedTexts = [];
-
-                      for (int i = 0; i < promptTexts.length; i++) {
-                        combinedTexts.add(promptTexts[i]);
-                        if (i < summaryTexts.length) {
-                          combinedTexts.add(summaryTexts[i]);
+                      if (saveAsPdf) {
+                        final pdfGenerator = PdfGenerator();
+                        await pdfGenerator.generateSummaryPdf(
+                          imageUrls: widget.imageUrls,
+                          textControllers: _textControllers,
+                          language: _selectedLanguage ?? 'en',
+                          summaryControllers: _summaryControllers,
+                          documentName: nameController.text,
+                        );
+                        if (mounted) {
+                          Navigator.pop(context);
+                          showSnackBar(context, "PDF saved successfully");
                         }
-                      }
+                      } else {
+                        // Original save logic
+                        List<String> promptTexts =
+                            _textControllers.map((c) => c.text).toList();
+                        List<String> summaryTexts =
+                            _summaryControllers.map((c) => c.text).toList();
+                        List<String> combinedTexts = [];
 
-                      await _control.saveSummary(
-                        widget.imageUrls,
-                        combinedTexts,
-                        nameController.text,
-                        type,
-                      );
+                        for (int i = 0; i < promptTexts.length; i++) {
+                          combinedTexts.add(promptTexts[i]);
+                          if (i < summaryTexts.length) {
+                            combinedTexts.add(summaryTexts[i]);
+                          }
+                        }
 
-                      if (mounted) {
-                        Navigator.pop(context);
-                        showSnackBar(context, "Summary saved successfully");
+                        await _control.saveSummary(
+                          widget.imageUrls,
+                          combinedTexts,
+                          nameController.text,
+                          type,
+                        );
+                        if (mounted) {
+                          Navigator.pop(context);
+                          showSnackBar(context, "Summary saved successfully");
+                        }
                       }
                     } catch (e) {
                       showSnackBar(context, "Error saving summary: $e");
